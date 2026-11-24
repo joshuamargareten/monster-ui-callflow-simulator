@@ -62,7 +62,7 @@ The Monster app is the [`app/`](app/) folder. It has no build step and no Handle
 **A built Monster** (the files your web server serves) — copy the folder in:
 
 ```bash
-git clone https://github.com/{owner}/monster-ui-call-route-visualizer.git
+git clone https://github.com/joshuamargareten/monster-ui-call-route-visualizer.git
 cp -r monster-ui-call-route-visualizer/app /var/www/monster-ui/apps/call-route-visualizer
 ```
 

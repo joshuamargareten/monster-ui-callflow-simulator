@@ -29,8 +29,8 @@
 		"call-route-visualizer_4.png"
 	],
 	"urls": {
-		"documentation": "https://github.com/{owner}/monster-ui-call-route-visualizer#readme",
-		"howto": "https://github.com/{owner}/monster-ui-call-route-visualizer#install"
+		"documentation": "https://github.com/joshuamargareten/monster-ui-call-route-visualizer#readme",
+		"howto": "https://github.com/joshuamargareten/monster-ui-call-route-visualizer#install"
 	},
 	"masqueradable": true,
 	"pvt_type": "app"
