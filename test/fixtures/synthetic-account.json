@@ -1,0 +1,592 @@
+{
+ "account": {
+  "id": "acct-synthetic",
+  "name": "Maple Dental (synthetic)",
+  "timezone": "America/New_York",
+  "realm": "maple.example",
+  "language": "en-us"
+ },
+ "temporal_rules": {
+  "r_open": {
+   "name": "Open Hours",
+   "cycle": "weekly",
+   "interval": 1,
+   "wdays": [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday"
+   ],
+   "start_date": 63745056000,
+   "time_window_start": 32400,
+   "time_window_stop": 61200
+  },
+  "r_lunch": {
+   "name": "Lunch",
+   "cycle": "weekly",
+   "interval": 1,
+   "wdays": [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday"
+   ],
+   "start_date": 63745056000,
+   "time_window_start": 43200,
+   "time_window_stop": 46800
+  },
+  "r_xmas": {
+   "name": "Christmas",
+   "cycle": "yearly",
+   "interval": 1,
+   "month": 12,
+   "days": [
+    25
+   ],
+   "start_date": 63745056000
+  },
+  "r_jul4": {
+   "name": "July 4th 2026",
+   "cycle": "date",
+   "interval": 1,
+   "wdays": [
+    "sunday"
+   ],
+   "start_date": 63950356800
+  },
+  "r_bad": {
+   "name": "Broken rule",
+   "cycle": "weekly",
+   "interval": 1,
+   "wdays": [
+    "fryday"
+   ],
+   "start_date": 63745056000,
+   "time_window_start": 32400,
+   "time_window_stop": 61200
+  }
+ },
+ "temporal_rules_sets": {
+  "s_holidays": {
+   "name": "Holidays",
+   "temporal_rules": [
+    "r_xmas",
+    "r_jul4"
+   ]
+  }
+ },
+ "users": {
+  "u_alice": {
+   "first_name": "Alice",
+   "last_name": "Adams",
+   "presence_id": "101",
+   "username": "alice"
+  },
+  "u_bob": {
+   "first_name": "Bob",
+   "last_name": "Brown",
+   "presence_id": "102",
+   "username": "bob"
+  },
+  "u_carol": {
+   "first_name": "Carol",
+   "last_name": "Chen",
+   "presence_id": "103",
+   "username": "carol"
+  }
+ },
+ "devices": {
+  "d_lobby": {
+   "name": "Lobby phone",
+   "device_type": "sip_device"
+  }
+ },
+ "vmboxes": {
+  "vm_main": {
+   "name": "General Mailbox",
+   "mailbox": "200",
+   "media": {
+    "unavailable": "m_vm"
+   }
+  },
+  "vm_alice": {
+   "name": "Alice Adams",
+   "mailbox": "101"
+  }
+ },
+ "media": {
+  "m_greet": {
+   "name": "Main greeting",
+   "media_source": "upload"
+  },
+  "m_after": {
+   "name": "After hours greeting",
+   "media_source": "tts"
+  },
+  "m_hold": {
+   "name": "Hold music",
+   "media_source": "upload"
+  },
+  "m_vm": {
+   "name": "Mailbox greeting",
+   "media_source": "recording"
+  },
+  "m_closed": {
+   "name": "We are closed",
+   "media_source": "tts"
+  }
+ },
+ "menus": {
+  "menu_main": {
+   "name": "Main Menu",
+   "media": {
+    "greeting": "m_greet"
+   },
+   "hunt": true
+  },
+  "menu_after": {
+   "name": "After Hours Menu",
+   "media": {
+    "greeting": "m_after"
+   }
+  }
+ },
+ "qubicle_queues": {
+  "q_front": {
+   "name": "Front Desk Queue",
+   "queue_router": "route_round_robin",
+   "hold_treatment": {
+    "1": {
+     "play_file": "m_hold"
+    }
+   },
+   "members": {
+    "u_alice": {},
+    "u_bob": {}
+   }
+  }
+ },
+ "directories": {
+  "dir_main": {
+   "name": "Company Directory"
+  }
+ },
+ "groups": {},
+ "faxboxes": {},
+ "conferences": {},
+ "callflows": {
+  "cf_main": {
+   "name": "Main Line",
+   "numbers": [
+    "+18455550100"
+   ],
+   "flow": {
+    "module": "temporal_route",
+    "data": {
+     "rules": [
+      "s_holidays",
+      "r_lunch",
+      "r_open"
+     ]
+    },
+    "children": {
+     "s_holidays": {
+      "module": "play",
+      "data": {
+       "id": "m_closed"
+      },
+      "children": {
+       "_": {
+        "module": "voicemail",
+        "data": {
+         "id": "vm_main",
+         "action": "compose"
+        }
+       }
+      }
+     },
+     "r_lunch": {
+      "module": "callflow",
+      "data": {
+       "id": "cf_lunch"
+      },
+      "children": {
+       "_": {
+        "module": "voicemail",
+        "data": {
+         "id": "vm_main",
+         "action": "compose"
+        }
+       }
+      }
+     },
+     "r_open": {
+      "module": "menu",
+      "data": {
+       "id": "menu_main"
+      },
+      "children": {
+       "0": {
+        "module": "ring_group",
+        "data": {
+         "name": "Everyone",
+         "strategy": "simultaneous",
+         "endpoints": [
+          {
+           "id": "u_alice",
+           "endpoint_type": "user"
+          },
+          {
+           "id": "u_bob",
+           "endpoint_type": "user"
+          }
+         ]
+        },
+        "children": {
+         "_": {
+          "module": "voicemail",
+          "data": {
+           "id": "vm_main",
+           "action": "compose"
+          }
+         }
+        }
+       },
+       "1": {
+        "module": "user",
+        "data": {
+         "id": "u_alice",
+         "timeout": 20,
+         "can_call_self": false
+        },
+        "children": {
+         "_": {
+          "module": "voicemail",
+          "data": {
+           "id": "vm_alice",
+           "action": "compose"
+          }
+         }
+        }
+       },
+       "2": {
+        "module": "qubicle",
+        "data": {
+         "id": "q_front"
+        },
+        "children": {
+         "_": {
+          "module": "voicemail",
+          "data": {
+           "id": "vm_main",
+           "action": "compose"
+          }
+         }
+        }
+       },
+       "3": {
+        "module": "directory",
+        "data": {
+         "id": "dir_main"
+        }
+       },
+       "9": {
+        "module": "callflow",
+        "data": {
+         "id": "cf_main"
+        }
+       },
+       "timeout": {
+        "module": "callflow",
+        "data": {
+         "id": "cf_operator"
+        }
+       },
+       "_": {
+        "module": "voicemail",
+        "data": {
+         "id": "vm_main",
+         "action": "compose"
+        }
+       }
+      }
+     },
+     "_": {
+      "module": "menu",
+      "data": {
+       "id": "menu_after"
+      },
+      "children": {
+       "1": {
+        "module": "callflow",
+        "data": {
+         "id": "cf_oncall"
+        }
+       },
+       "_": {
+        "module": "voicemail",
+        "data": {
+         "id": "vm_main",
+         "action": "compose"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "cf_lunch": {
+   "name": "Lunch message",
+   "numbers": [
+    "8001"
+   ],
+   "flow": {
+    "module": "play",
+    "data": {
+     "id": "m_closed"
+    }
+   }
+  },
+  "cf_operator": {
+   "name": "Operator",
+   "numbers": [
+    "0"
+   ],
+   "flow": {
+    "module": "user",
+    "data": {
+     "id": "u_bob",
+     "timeout": 20,
+     "can_call_self": false
+    },
+    "children": {
+     "_": {
+      "module": "voicemail",
+      "data": {
+       "id": "vm_main",
+       "action": "compose"
+      }
+     }
+    }
+   }
+  },
+  "cf_oncall": {
+   "name": "On-call",
+   "numbers": [
+    "+18455550199"
+   ],
+   "flow": {
+    "module": "device",
+    "data": {
+     "id": "d_lobby",
+     "timeout": 20
+    },
+    "children": {
+     "_": {
+      "module": "offnet",
+      "data": {}
+     }
+    }
+   }
+  },
+  "cf_loop_a": {
+   "name": "Loop A",
+   "numbers": [
+    "+18455550111"
+   ],
+   "flow": {
+    "module": "callflow",
+    "data": {
+     "id": "cf_loop_b"
+    }
+   }
+  },
+  "cf_loop_b": {
+   "name": "Loop B",
+   "numbers": [],
+   "flow": {
+    "module": "callflow",
+    "data": {
+     "id": "cf_loop_a"
+    }
+   }
+  },
+  "cf_missing": {
+   "name": "Stale config",
+   "numbers": [
+    "+18455550122"
+   ],
+   "flow": {
+    "module": "user",
+    "data": {
+     "id": "u_ghost",
+     "timeout": 20,
+     "can_call_self": false
+    },
+    "children": {
+     "_": {
+      "module": "callflow",
+      "data": {
+       "id": "cf_deleted"
+      },
+      "children": {
+       "_": {
+        "module": "voicemail",
+        "data": {
+         "id": "vm_main",
+         "action": "compose"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "cf_broken_tod": {
+   "name": "Broken schedule",
+   "numbers": [
+    "+18455550133"
+   ],
+   "flow": {
+    "module": "temporal_route",
+    "data": {
+     "rules": [
+      "r_open",
+      "r_bad"
+     ]
+    },
+    "children": {
+     "r_open": {
+      "module": "user",
+      "data": {
+       "id": "u_alice",
+       "timeout": 20,
+       "can_call_self": false
+      }
+     },
+     "_": {
+      "module": "voicemail",
+      "data": {
+       "id": "vm_main",
+       "action": "compose"
+      }
+     }
+    }
+   }
+  },
+  "cf_dead": {
+   "name": "Busy signal",
+   "numbers": [
+    "+18455550144"
+   ],
+   "flow": {
+    "module": "response",
+    "data": {
+     "code": 486
+    },
+    "children": {
+     "_": {
+      "module": "user",
+      "data": {
+       "id": "u_carol",
+       "timeout": 20,
+       "can_call_self": false
+      }
+     }
+    }
+   }
+  },
+  "cf_menu_retries": {
+   "name": "Retries menu",
+   "numbers": [
+    "8002"
+   ],
+   "flow": {
+    "module": "menu",
+    "data": {
+     "id": "menu_after"
+    },
+    "children": {
+     "1": {
+      "module": "user",
+      "data": {
+       "id": "u_alice",
+       "timeout": 20,
+       "can_call_self": false
+      }
+     },
+     "max_retries": {
+      "module": "voicemail",
+      "data": {
+       "id": "vm_main",
+       "action": "compose"
+      }
+     },
+     "_": {
+      "module": "user",
+      "data": {
+       "id": "u_carol",
+       "timeout": 20,
+       "can_call_self": false
+      }
+     }
+    }
+   }
+  },
+  "cf_park": {
+   "name": "Park",
+   "numbers": [
+    "*3"
+   ],
+   "featurecode": {
+    "name": "park",
+    "number": "3"
+   },
+   "flow": {
+    "module": "park",
+    "data": {
+     "action": "park"
+    }
+   }
+  },
+  "cf_control": {
+   "name": "Close office",
+   "numbers": [
+    "*55"
+   ],
+   "featurecode": {
+    "name": "close",
+    "number": "55"
+   },
+   "flow": {
+    "module": "temporal_route",
+    "data": {
+     "action": "disable",
+     "rules": [
+      "r_open"
+     ]
+    },
+    "children": {
+     "_": {
+      "module": "play",
+      "data": {
+       "id": "m_closed"
+      }
+     }
+    }
+   }
+  }
+ },
+ "phone_numbers": {
+  "+18455550100": {},
+  "+18455550199": {},
+  "+18455550111": {},
+  "+18455550122": {},
+  "+18455550133": {},
+  "+18455550144": {},
+  "+18455550155": {},
+  "+18455550166": {}
+ }
+}

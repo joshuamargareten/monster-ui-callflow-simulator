@@ -1,0 +1,336 @@
+/* Call Routing Visualizer.
+ *
+ * The list, header, search box and buttons use DT-Callflows' own markup, so DT-Callflows'
+ * stylesheet (apps/dt-callflows/style/app.css) and the Dimensions overrides (css/dt-callflows.css)
+ * style them — nothing here duplicates those. This file only covers what DT-Callflows doesn't
+ * have (the map, keypad, simulator, details) and reads Dimensions' design tokens (branding.css)
+ * with Dimensions' own values as fallbacks.
+ */
+
+/* Monster host: fill the space under Monster's top bar. */
+.crv-host { height: calc(100vh - 64px); min-height: 560px; }
+.crv-loading { display: flex; align-items: center; justify-content: center; gap: 8px; height: 100%;
+	color: var(--buttonColor2, #6B777b); font: 14px var(--fontOverride, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif); }
+.crv-loading--error { color: var(--textColor5, #e82c3b); }
+
+#callflow_container.crv-app, .crv-print {
+	--crv-font: var(--fontOverride, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif);
+	/* Dimensions' live design tokens (the embedded portal gets them from Xarios' brand API;
+	   the regular portal defines none, so the fallbacks — Dimensions' defaults — apply). */
+	--crv-bg: var(--backgroundColor1, #f0f1f5);
+	--crv-surface: var(--backgroundColor2, #ffffff);
+	--crv-border: var(--backgroundColor6, #dee2e6);
+	--crv-text: var(--textColor3, #3F4C51);
+	--crv-heading: var(--textColor6, #011132);
+	--crv-muted: var(--buttonColor2, #6B777b);
+	--crv-accent: var(--buttonColor4, #2aa9df);
+	--crv-accent-soft: color-mix(in srgb, var(--crv-accent) 12%, #ffffff);
+	--crv-active: var(--buttonColor4, #2aa9df);
+	--crv-fail: var(--textColor5, #e82c3b);
+	--crv-warn: var(--buttonColor7, #f7c12d);
+	--crv-ok: var(--agentStateColor1, #4abf79);
+	--crv-node-bg: var(--callflowActionColor1, #30354b);
+	--crv-node-text: var(--callflowActionColor2, #ffffff);
+	--crv-node-title: var(--callflowActionColor4, #181f3f);
+	--crv-edge: var(--callflowActionColor1, #30354b);
+	--crv-loop: #8b5cf6;
+	/* Routes the simulated call doesn't take: faded and greyed, but still readable. */
+	--crv-dim: 0.5;
+	--crv-radius: 6px;
+}
+#callflow_container.crv-app {
+	height: 100%;
+	min-height: 560px;
+	color: var(--crv-text);
+	font: 13px/1.35 var(--crv-font);
+	overflow: hidden;
+}
+#callflow_container.crv-app *, #callflow_container.crv-app *::before, #callflow_container.crv-app *::after { box-sizing: border-box; }
+#callflow_container.crv-app button { font: inherit; cursor: pointer; }
+
+/* Structure: DT-Callflows sizes .callflow-content to 100vh; inside Monster we fill our host. */
+#callflow_container.crv-app .callflow-edition, #callflow_container.crv-app .callflow-manager { height: 100%; }
+#callflow_container.crv-app .left-bar-container { height: 100%; display: flex; flex-direction: column; }
+#callflow_container.crv-app .left-bar-container .list-container { flex: 1; min-height: 0; overflow: hidden; height: auto !important; }
+#callflow_container.crv-app .left-bar-container .list { height: 100%; }
+#callflow_container.crv-app .callflow-content { height: 100%; }
+#callflow_container.crv-app .callflow-view { flex: 1; min-height: 0; position: relative; }
+
+/* Header row: search box, then the mode dropdown beside it, buttons on the right. */
+#callflow_container.crv-app .entity-header { display: flex; align-items: center; gap: 10px; }
+#callflow_container.crv-app .entity-header .search-box { flex: 0 1 260px; position: relative; margin: 0; }
+#callflow_container.crv-app .entity-header .search-box .search-query { width: 100%; margin: 0; padding-left: 30px; }
+#callflow_container.crv-app .crv-mode__select { width: auto; height: 30px; margin: 0; padding: 0 28px 0 10px; border: 1px solid var(--crv-border);
+	border-radius: 4px; background-color: var(--crv-surface); color: var(--crv-text); font: inherit; box-shadow: none; cursor: pointer; }
+#callflow_container.crv-app .entity-header .crv-header-buttons { margin-left: auto; float: none; display: flex; flex-direction: row; align-items: center; gap: 10px; }
+#callflow_container.crv-app .crv-tz { color: var(--crv-muted); font-size: 12px; white-space: nowrap; }
+
+/* Number filters under the list title (DT-Callflows has no equivalent). */
+#callflow_container.crv-app .crv-filters { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 10px; border-bottom: 1px solid var(--crv-border); background: var(--crv-bg); }
+#callflow_container.crv-app .crv-filters button { border: 1px solid var(--crv-border); background: var(--crv-surface); color: var(--crv-muted); border-radius: 999px; padding: 2px 8px; font-size: 12px; }
+#callflow_container.crv-app .crv-filters button span { opacity: .7; }
+#callflow_container.crv-app .crv-filters button.is-active { background: var(--crv-accent); border-color: var(--crv-accent); color: #fff; }
+#callflow_container.crv-app .crv-list__empty { padding: 14px; color: var(--crv-muted); list-style: none; }
+#callflow_container.crv-app .left-bar-container .list { padding: 0; }
+#callflow_container.crv-app .list-element.crv-list__off .title { color: var(--crv-muted); font-style: italic; }
+
+/* ---------- Monster without DT-Callflows (`.crv-standalone`, set by app.js) ----------
+   The same layout as above, drawn by this app itself: list on the left, header, map. */
+.crv-standalone #callflow_container.crv-app .callflow-manager { position: relative; }
+.crv-standalone #callflow_container.crv-app .left-bar-container { float: left; width: 241px; background: #f3f3f3; border-right: 1px solid #ccc; overflow: hidden; }
+.crv-standalone #callflow_container.crv-app .embedded-list-title { height: 64px; display: flex; align-items: flex-end; padding: 0 12px 10px; border-bottom: 1px solid #ccc; }
+.crv-standalone #callflow_container.crv-app .embedded-list-title .entity-title { font-size: 26px; line-height: 1.1; color: var(--crv-accent); }
+.crv-standalone #callflow_container.crv-app .left-bar-container .list { margin: 0; list-style: none; overflow-y: auto; overflow-x: hidden; }
+.crv-standalone #callflow_container.crv-app .list-element { border-bottom: 1px solid #ddd; height: auto; max-height: none; line-height: normal; }
+.crv-standalone #callflow_container.crv-app .list-element .title, .crv-standalone #callflow_container.crv-app .list-element .description { height: auto; }
+.crv-standalone #callflow_container.crv-app .list-element > .link { padding: 9px 12px; background: #f8f8f8; color: #444; cursor: pointer; }
+.crv-standalone #callflow_container.crv-app .list-element > .link:hover { background: #eee; }
+.crv-standalone #callflow_container.crv-app .list-element.selected-element > .link { background: var(--crv-accent); color: #fff; }
+.crv-standalone #callflow_container.crv-app .link .title { font-size: 15px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crv-standalone #callflow_container.crv-app .link .title.standalone { padding: 8px 0; }
+.crv-standalone #callflow_container.crv-app .link .description { font-size: 12px; line-height: 1.3; opacity: .8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crv-standalone #callflow_container.crv-app .callflow-content { margin-left: 241px; display: flex; flex-direction: column; background: #fff; overflow: hidden; }
+.crv-standalone #callflow_container.crv-app .entity-header { height: 64px; flex: none; padding: 0 14px; border-bottom: 1px solid #ccc; }
+.crv-standalone #callflow_container.crv-app .entity-header .search-query { height: 30px; border: 1px solid #ccc; border-radius: 4px; box-shadow: none; }
+.crv-standalone #callflow_container.crv-app .entity-header .search-box i { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); font-family: 'Material Symbols Outlined'; font-style: normal; font-size: 20px; color: var(--crv-muted); }
+.crv-standalone #callflow_container.crv-app.crv-mode-account .callflow-content { margin-left: 0; }
+
+/* No Material Symbols font: hide ligature words, show plain symbols instead. */
+#callflow_container.crv-app.crv-no-glyphs .search-box i { display: none; }
+#callflow_container.crv-app.crv-no-glyphs .entity-header .search-box .search-query { padding-left: 8px; }
+.crv-app.crv-no-glyphs [data-alt]::after { content: attr(data-alt); font-size: 16px; line-height: 1; }
+.crv-app.crv-no-glyphs .crv-dhead__icon, .crv-app.crv-no-glyphs .crv-ditem__icon { display: none; }
+
+/* Whole account: no list, the map takes the full width. */
+#callflow_container.crv-app.crv-mode-account .left-bar-container { display: none; }
+#callflow_container.crv-app.crv-mode-account .callflow-content { margin-left: 0; }
+
+/* Date/time: Monster's own pickers (jQuery UI datepicker + jquery-timepicker) on plain text
+   inputs, like Callflows' time of day. Bootstrap 2 sizes inputs globally; give ours one height so
+   the row lines up with the Now button. */
+#callflow_container.crv-app .crv-when input {
+	width: 100%; height: 32px; margin: 0; line-height: normal; box-shadow: none; border-radius: 4px; padding: 0 8px;
+	border: 1px solid var(--crv-border); background: var(--crv-surface); color: var(--crv-text); font: inherit; }
+#callflow_container.crv-app input[type="range"] { width: 100%; height: auto; margin: 4px 0 8px; box-shadow: none; border: 0; padding: 0; accent-color: var(--crv-accent); }
+#callflow_container.crv-app input[type="checkbox"] { width: auto; height: auto; margin: 0; accent-color: var(--crv-accent); }
+#callflow_container.crv-app label { display: block; margin: 0; font-size: inherit; color: inherit; }
+
+/* ---------- body: map + side panel ---------- */
+#callflow_container.crv-app .crv-body { position: absolute; inset: 0; display: flex; }
+.crv-app .crv-main { position: relative; flex: 1; min-width: 0; }
+.crv-app .crv-canvas-host { position: absolute; inset: 0; }
+.crv-app .crv-busy { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 8px;
+	background: var(--crv-surface); border: 1px solid var(--crv-border); border-radius: 999px; padding: 6px 14px; box-shadow: 0 4px 14px rgba(1, 17, 50, .12); color: var(--crv-text); }
+.crv-app .crv-busy[hidden] { display: none; }
+.crv-app .crv-busy__dots { width: 8px; height: 8px; border-radius: 50%; background: var(--crv-accent); animation: crv-pulse 0.9s ease-in-out infinite; }
+@keyframes crv-pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+
+/* Zoom controls — DT-Callflows style: accent squares with white glyphs. */
+.crv-app .crv-zoom { position: absolute; left: 12px; top: 12px; display: flex; flex-direction: column; gap: 6px; z-index: 5; }
+.crv-app .crv-zoom button { width: 30px; height: 30px; border: 0; border-radius: 4px; background: var(--crv-accent); color: #fff; display: flex; align-items: center; justify-content: center; padding: 0; }
+.crv-app .crv-zoom button:hover { filter: brightness(0.9); }
+.crv-app .crv-glyph-sm { font-family: 'Material Symbols Outlined'; font-size: 20px; line-height: 1; font-weight: normal; font-style: normal; letter-spacing: normal; text-transform: none; white-space: nowrap; }
+
+.crv-app .crv-side { width: 340px; flex: none; overflow: auto; background: var(--crv-surface); border-left: 1px solid var(--crv-border); }
+.crv-app .crv-panel { padding: 12px 14px; border-bottom: 1px solid var(--crv-border); }
+.crv-app .crv-panel[hidden] { display: none; }
+.crv-app .crv-panel h3 { margin: 0 0 6px; font-size: 15px; font-weight: 600; line-height: 1.3; display: flex; align-items: center; gap: 6px; color: var(--crv-heading); font-family: inherit; }
+.crv-app .crv-panel h4 { margin: 12px 0 6px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--crv-muted); line-height: 1.3; font-family: inherit; }
+.crv-app .crv-muted { color: var(--crv-muted); margin: 0 0 8px; }
+.crv-app .crv-field { display: flex; flex-direction: column; gap: 3px; margin: 8px 0; flex: 1; }
+.crv-app .crv-field > span { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--crv-muted); }
+.crv-app .crv-when { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) auto; gap: 8px; align-items: end; margin: 8px 0; }
+.crv-app .crv-when .crv-field { margin: 0; }
+/* Same height as the inputs, sitting on the same baseline; Monster's .monster-button min sizes off. */
+#callflow_container.crv-app .crv-when .crv-now { width: auto; min-width: 0; height: 32px; margin: 0; padding: 0 12px; line-height: 30px; box-sizing: border-box; }
+.crv-app .crv-side { overflow-x: hidden; }
+.crv-app .crv-days { display: flex; gap: 4px; margin-bottom: 8px; }
+.crv-app .crv-days button { flex: 1; border: 1px solid var(--crv-border); background: var(--crv-surface); border-radius: 4px; padding: 4px 0; color: var(--crv-muted); }
+.crv-app .crv-days button.is-active { background: var(--crv-accent); border-color: var(--crv-accent); color: #fff; }
+.crv-app .crv-seg { display: flex; border: 1px solid var(--crv-border); border-radius: 4px; overflow: hidden; }
+.crv-app .crv-seg button { flex: 1; border: 0; background: var(--crv-surface); padding: 6px 4px; color: var(--crv-muted); font-size: 12px; }
+.crv-app .crv-seg button + button { border-left: 1px solid var(--crv-border); }
+.crv-app .crv-seg button.is-active { background: var(--crv-accent); color: #fff; }
+.crv-app .crv-check { display: flex; align-items: center; gap: 6px; margin: 6px 0; }
+.crv-app .crv-btn { margin-top: 10px; width: 100%; }
+.crv-app .crv-path { margin: 0; padding-left: 20px; }
+.crv-app .crv-path li { margin: 0 0 6px; }
+.crv-app .crv-path li b { font-weight: 600; color: var(--crv-heading); }
+.crv-app .crv-path li small { display: block; color: var(--crv-muted); }
+.crv-app .crv-path li.is-return small { color: var(--crv-ok); }
+.crv-app .crv-end { margin-top: 6px; padding: 7px 9px; border-radius: 4px; background: var(--crv-accent-soft); }
+.crv-app .crv-end--answered, .crv-app .crv-end--terminal { background: color-mix(in srgb, var(--crv-ok) 16%, #ffffff); }
+.crv-app .crv-end--kazoo-error, .crv-app .crv-end--kazoo-limit, .crv-app .crv-end--ends, .crv-app .crv-end--loop { background: color-mix(in srgb, var(--crv-fail) 12%, #ffffff); }
+.crv-app .crv-keys { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.crv-app .crv-keys button { min-width: 34px; border: 1px solid var(--crv-accent); color: var(--crv-accent); background: var(--crv-surface); border-radius: 4px; padding: 4px 8px; font-weight: 600; }
+.crv-app .crv-keys .crv-keys__none { font-weight: 400; }
+.crv-app .crv-x { margin-left: auto; border: 0; background: none; font-size: 20px; line-height: 1; color: var(--crv-muted); padding: 0 2px; }
+/* Details — laid out like Callflows' action dialogs: a header with the step's icon, a settings
+   table (label | value rows on the table colour), then lists of members / options / rules. */
+.crv-app .crv-dhead { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.crv-app .crv-dhead__icon { flex: none; width: 36px; height: 36px; border-radius: var(--crv-radius); background: var(--crv-node-bg); color: var(--crv-node-text);
+	display: flex; align-items: center; justify-content: center; font-size: 22px; }
+.crv-app .crv-dhead__titles { flex: 1; min-width: 0; }
+.crv-app .crv-dhead h3 { margin: 0; }
+.crv-app .crv-dtype { font-size: 10px; letter-spacing: .08em; color: var(--crv-muted); text-transform: uppercase; }
+.crv-app .crv-dtable { width: 100%; border-collapse: separate; border-spacing: 0 3px; margin: -3px 0; table-layout: fixed; }
+.crv-app .crv-dtable th, .crv-app .crv-dtable td { background: var(--tableColor1, #f6f7f9); padding: 7px 10px; vertical-align: top; text-align: left; line-height: 1.35; }
+.crv-app .crv-dtable th { width: 40%; font-weight: 500; color: var(--crv-muted); border-radius: 4px 0 0 4px; }
+.crv-app .crv-dtable td { color: var(--crv-heading); border-radius: 0 4px 4px 0; word-break: break-word; }
+.crv-app .crv-dtable td .crv-chip { margin: 4px 0 0; display: inline-flex; }
+.crv-app .crv-dtable__v { display: block; }
+.crv-app .crv-ditems { display: flex; flex-direction: column; gap: 3px; }
+.crv-app .crv-ditem { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; background: var(--tableColor1, #f6f7f9); min-height: 38px; }
+.crv-app .crv-ditem.is-link { cursor: pointer; }
+.crv-app .crv-ditem.is-link:hover { background: var(--crv-accent-soft); }
+.crv-app .crv-ditem.is-muted { opacity: .65; }
+.crv-app .crv-ditem--head { background: none; min-height: 0; padding: 0 8px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--crv-muted); }
+.crv-app .crv-ditem__icon { flex: none; width: 22px; text-align: center; color: var(--crv-node-bg); font-size: 20px; }
+.crv-app .crv-ditem--head .crv-ditem__main { padding-left: 30px; }
+.crv-app .crv-ditem__main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.crv-app .crv-ditem__title { color: var(--crv-heading); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+.crv-app .crv-ditem__sub { font-size: 12px; color: var(--crv-muted); }
+.crv-app .crv-ditem__sub.is-online::before, .crv-app .crv-ditem__sub.is-offline::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; background: var(--crv-ok); vertical-align: 1px; }
+.crv-app .crv-ditem__sub.is-offline::before { background: var(--crv-fail); }
+.crv-app .crv-ditem__cell { flex: none; min-width: 52px; text-align: right; color: var(--crv-heading); font-variant-numeric: tabular-nums; font-size: 12px; }
+.crv-app .crv-ditem__to { font-size: 12px; color: var(--crv-accent); font-weight: 500; margin-top: 1px; }
+/* Menu keys and rule order: a keycap like the map's keypad. */
+.crv-app .crv-keycap { flex: none; min-width: 26px; height: 26px; padding: 0 6px; border-radius: 4px; background: var(--crv-node-bg); color: var(--crv-node-text);
+	font-weight: 600; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
+.crv-app .crv-keycap--wide { font-size: 10px; font-weight: 500; letter-spacing: .02em; max-width: 72px; text-align: center; line-height: 1.1; white-space: normal; }
+.crv-app .crv-issues { list-style: none; margin: 0; padding: 0; }
+.crv-app .crv-issue { padding: 5px 0 5px 10px; border-left: 3px solid var(--crv-warn); margin-bottom: 4px; }
+.crv-app .crv-issue--error { border-color: var(--crv-fail); }
+.crv-app .crv-issue--info { border-color: var(--crv-border); color: var(--crv-muted); }
+.crv-app .crv-issue a { color: var(--crv-accent); text-decoration: none; font-weight: 600; }
+.crv-app .crv-count { background: var(--crv-fail); color: #fff; border-radius: 999px; padding: 0 7px; font-size: 11px; }
+.crv-app .crv-toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--crv-node-title); color: #fff; padding: 8px 14px; border-radius: 4px; z-index: 50; }
+.crv-app .crv-toast[hidden] { display: none; }
+.crv-app .crv-chip { display: inline-flex; align-items: center; gap: 3px; border: 1px solid var(--crv-border); background: var(--crv-surface); border-radius: 999px; padding: 1px 8px 1px 4px;
+	font-size: 12px; color: var(--crv-accent); white-space: nowrap; }
+.crv-app .crv-chip__glyph { font-family: 'Material Symbols Outlined'; font-size: 16px; line-height: 1; }
+.crv-app .crv-chip--play.is-playing { background: var(--crv-accent); border-color: var(--crv-accent); color: #fff; }
+.crv-app .crv-node .crv-chip--play.is-playing { background: var(--crv-active); border-color: #fff; color: #fff; }
+.crv-app .crv-chip--play.is-system:not(.is-playing) { border-style: dashed; }
+
+/* Now playing — floats over the bottom of the map; the play buttons double as stop buttons. */
+.crv-app .crv-player { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 7; width: min(440px, calc(100% - 32px));
+	display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 8px; background: var(--crv-node-title); color: #fff;
+	box-shadow: 0 6px 22px rgba(1, 17, 50, .3); }
+.crv-app .crv-player[hidden] { display: none; }
+.crv-app .crv-player__eq { display: flex; align-items: flex-end; gap: 2px; height: 16px; flex: none; }
+.crv-app .crv-player__eq i { width: 3px; height: 100%; background: var(--crv-accent); border-radius: 1px; animation: crv-eq .9s ease-in-out infinite; transform-origin: bottom; }
+.crv-app .crv-player__eq i:nth-child(2) { animation-delay: -.3s; }
+.crv-app .crv-player__eq i:nth-child(3) { animation-delay: -.6s; }
+.crv-app .crv-player__eq i:nth-child(4) { animation-delay: -.15s; }
+@keyframes crv-eq { 0%, 100% { transform: scaleY(.25); } 50% { transform: scaleY(1); } }
+.crv-app .crv-player__info { flex: 1; min-width: 0; }
+.crv-app .crv-player__title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crv-app .crv-player__bar { height: 4px; margin-top: 6px; border-radius: 2px; background: rgba(255, 255, 255, .22); cursor: pointer; overflow: hidden; }
+.crv-app .crv-player__bar span { display: block; height: 100%; width: 0; background: var(--crv-accent); transition: width .2s linear; }
+.crv-app .crv-player.is-speech .crv-player__bar { display: none; }
+.crv-app .crv-player__time { flex: none; font-size: 12px; opacity: .8; font-variant-numeric: tabular-nums; }
+.crv-app .crv-player__stop { flex: none; width: 32px; height: 32px; border-radius: 50%; border: 0; background: #fff; color: var(--crv-node-title);
+	display: flex; align-items: center; justify-content: center; padding: 0; }
+.crv-app .crv-player__stop:hover { background: var(--crv-accent); color: #fff; }
+
+/* ---------- canvas ---------- */
+/* Dotted canvas like the Callflows designer. */
+.crv-app .crv-canvas { position: absolute; inset: 0; overflow: hidden; cursor: grab; user-select: none;
+	background-color: var(--crv-bg); background-image: radial-gradient(color-mix(in srgb, var(--crv-edge) 22%, transparent) 1px, transparent 1px); background-size: 18px 18px; }
+.crv-app .crv-canvas.is-panning { cursor: grabbing; }
+.crv-app .crv-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.crv-app .crv-edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.crv-app .crv-nodes { position: absolute; left: 0; top: 0; }
+.crv-app .crv-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--crv-muted); font-size: 14px; padding: 0 30px; text-align: center; }
+
+.crv-app .crv-edge path { fill: none; stroke: var(--crv-edge); stroke-opacity: .6; stroke-width: 1.5; }
+.crv-app .crv-edge--entry path, .crv-app .crv-edge--jump path { stroke: var(--crv-accent); stroke-opacity: .85; stroke-dasharray: 5 4; }
+.crv-app .crv-edge--failure path { stroke: var(--crv-fail); stroke-opacity: .7; stroke-dasharray: 6 4; }
+.crv-app .crv-edge--loop path { stroke: var(--crv-loop); stroke-opacity: .9; stroke-dasharray: 4 3; }
+.crv-app .crv-edge--loop.is-caller-loop path { stroke: var(--crv-accent); stroke-opacity: .7; }
+.crv-app .crv-edge--return path { stroke: var(--crv-ok); stroke-opacity: .9; stroke-dasharray: 6 4; }
+.crv-app .crv-edge--dead path { stroke: var(--crv-edge); stroke-opacity: .25; stroke-dasharray: 2 4; }
+.crv-app .crv-edge-label { font-size: 10px; fill: var(--crv-text); font-family: var(--crv-font); }
+.crv-app .crv-edge-label-bg { fill: var(--crv-bg); }
+.crv-app .crv-edge--failure .crv-edge-label { fill: var(--crv-fail); }
+.crv-app .crv-edge--dead .crv-edge-label { fill: var(--crv-muted); }
+.crv-app .crv-edge.is-lit path { stroke: var(--crv-active); stroke-opacity: 1; stroke-width: 2.8; stroke-dasharray: none; }
+.crv-app .crv-edge.is-lit .crv-edge-label { fill: var(--crv-active); font-weight: 600; }
+.crv-app .crv-edge.is-dim { opacity: var(--crv-dim); }
+.crv-app .crv-edge.is-dim path { stroke-dasharray: 4 3; }
+.crv-app .crv-edge.is-hidden { display: none; }
+.crv-app .crv-arrow path { fill: var(--crv-edge); fill-opacity: .6; }
+.crv-app .crv-arrow--failure path { fill: var(--crv-fail); fill-opacity: .7; }
+.crv-app .crv-arrow--loop path { fill: var(--crv-loop); }
+.crv-app .crv-arrow--return path { fill: var(--crv-ok); }
+.crv-app .crv-arrow--entry path, .crv-app .crv-arrow--jump path { fill: var(--crv-accent); fill-opacity: .85; }
+.crv-app .crv-arrow--active path { fill: var(--crv-active); fill-opacity: 1; }
+
+/* Icons: DT-Callflows' Material Symbols glyph; the old sprite only if that font is missing. */
+.crv-app .crv-glyph { font-family: 'Material Symbols Outlined'; font-weight: normal; font-style: normal; font-size: 30px; line-height: 1;
+	letter-spacing: normal; text-transform: none; white-space: nowrap; direction: ltr; -webkit-font-smoothing: antialiased; flex: none; width: 32px; text-align: center; overflow: hidden; }
+.crv-app .crv-sprite { display: none; flex: none; width: 32px; height: 32px; }
+.crv-app.crv-no-glyphs .crv-glyph, .crv-no-glyphs .crv-glyph { display: none; }
+.crv-app.crv-no-glyphs .crv-sprite, .crv-no-glyphs .crv-sprite { display: inline-block; }
+.crv-app.crv-no-glyphs .crv-glyph-sm, .crv-app.crv-no-glyphs .crv-chip__glyph { display: none; }
+
+/* Steps the caller experiences — the DT-Callflows action block. */
+.crv-app .crv-node { position: absolute; background: var(--crv-node-bg); color: var(--crv-node-text); border: 2px solid transparent;
+	border-radius: var(--crv-radius); box-shadow: 0 1px 3px rgba(1, 17, 50, .25); padding: 7px 10px; cursor: pointer;
+	transition: opacity .15s, box-shadow .15s, border-color .15s; overflow: hidden; font-family: var(--crv-font); }
+.crv-app .crv-node:hover { box-shadow: 0 4px 14px rgba(1, 17, 50, .3); }
+.crv-app .crv-node__head { display: flex; align-items: center; gap: 8px; }
+.crv-app .crv-node__titles { min-width: 0; flex: 1; }
+.crv-app .crv-node__label { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crv-app .crv-node__type { font-size: 10px; letter-spacing: .08em; color: color-mix(in srgb, var(--crv-node-text) 62%, transparent); }
+.crv-app .crv-node__sub { margin-top: 2px; font-size: 12px; color: color-mix(in srgb, var(--crv-node-text) 75%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crv-app .crv-node__badge { flex: none; min-width: 20px; height: 20px; border-radius: 999px; background: var(--crv-warn); color: var(--crv-node-title);
+	font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 5px; }
+.crv-app .crv-node.has-error .crv-node__badge { background: var(--crv-fail); color: #fff; }
+.crv-app .crv-node.has-error { border-left-color: var(--crv-fail); }
+.crv-app .crv-node__actions { display: flex; gap: 4px; margin-top: 6px; overflow: hidden; }
+.crv-app .crv-node .crv-chip { background: rgba(255, 255, 255, .1); border-color: rgba(255, 255, 255, .28); color: var(--crv-node-text); cursor: pointer; }
+.crv-app .crv-node .crv-chip:hover { background: rgba(255, 255, 255, .22); }
+.crv-app .crv-node .crv-chip--play.is-missing { border-color: var(--crv-fail); color: color-mix(in srgb, var(--crv-fail) 60%, #ffffff); }
+.crv-app .crv-chip--digit { justify-content: center; font-weight: 600; padding: 1px 8px; }
+
+/* Routing-only steps (time of day, jumps, caller-ID tweaks): slim outlined pills. */
+.crv-app .crv-node.crv-role--logic { background: var(--crv-surface); color: var(--crv-node-bg); border: 1.5px dashed color-mix(in srgb, var(--crv-node-bg) 55%, transparent);
+	border-radius: 999px; padding: 5px 12px 5px 8px; box-shadow: none; }
+.crv-app .crv-node.crv-role--logic .crv-node__head { gap: 6px; }
+.crv-app .crv-node.crv-role--logic .crv-glyph { font-size: 18px; width: 20px; color: var(--crv-node-bg); }
+.crv-app .crv-node.crv-role--logic .crv-sprite { width: 20px; height: 20px; background-size: auto; transform: scale(.65); filter: invert(1); }
+.crv-app .crv-node.crv-role--logic .crv-node__label { font-weight: 500; font-size: 12px; }
+.crv-app .crv-node.crv-role--logic .crv-node__sub { color: var(--crv-muted); font-size: 11px; margin-top: 0; }
+.crv-app .crv-node.crv-role--logic .crv-node__badge { min-width: 18px; height: 18px; }
+
+/* Menus: a phone keypad. Configured keys are live; the rest are disabled. */
+.crv-app .crv-keypad { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; align-items: center; }
+.crv-app .crv-keypad__row { display: flex; gap: 6px; }
+.crv-app .crv-key { width: 52px; height: 24px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, .35); background: rgba(255, 255, 255, .12);
+	color: var(--crv-node-text); font-weight: 600; font-size: 13px; line-height: 1; padding: 0; }
+.crv-app .crv-key:hover:not(:disabled) { background: var(--crv-accent); border-color: var(--crv-accent); }
+.crv-app .crv-key.is-off { opacity: .22; cursor: default; }
+.crv-app .crv-key.is-pressed, .crv-app .crv-chip--digit.is-pressed { background: var(--crv-active); border-color: #fff; box-shadow: 0 0 0 2px color-mix(in srgb, var(--crv-active) 45%, transparent); }
+.crv-app .crv-keypad__extra { display: flex; justify-content: center; gap: 4px; margin-top: 6px; }
+
+/* Numbers (entry points) use the callflow title-bar colour. */
+.crv-app .crv-node--entry { background: var(--crv-node-title); }
+.crv-app .crv-node--entry.is-unassigned { background: var(--crv-surface); color: var(--crv-muted); border: 1px dashed var(--crv-border); box-shadow: none; }
+.crv-app .crv-node--entry.is-unassigned .crv-node__type { color: var(--crv-muted); }
+
+.crv-app .crv-node.is-lit { border-color: var(--crv-active); box-shadow: 0 0 0 3px color-mix(in srgb, var(--crv-active) 30%, transparent); }
+.crv-app .crv-node.crv-role--logic.is-lit { border-style: solid; }
+.crv-app .crv-node.is-end { box-shadow: 0 0 0 4px color-mix(in srgb, var(--crv-active) 45%, transparent); }
+.crv-app .crv-node.is-dim { opacity: var(--crv-dim); filter: grayscale(.85); box-shadow: none; }
+.crv-app .crv-node.is-dim:hover { opacity: .85; filter: none; }
+.crv-app .crv-node.is-hidden { display: none; }
+.crv-app .crv-node.is-focus { border-color: var(--crv-active); box-shadow: 0 0 0 4px color-mix(in srgb, var(--crv-active) 35%, transparent); }
+.crv-app .crv-node.is-upstream { border-color: var(--crv-warn); }
+.crv-app .crv-node.is-selected { outline: 2px solid var(--crv-accent); outline-offset: 3px; }
+
+/* Print view (Export PDF) */
+.crv-print { display: block; height: auto; background: #fff; font: 12px/1.4 var(--fontOverride, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif); }
+.crv-print .crv-edge-label-bg { fill: #fff; }
+.crv-print .crv-node.is-dim, .crv-print .crv-edge.is-dim { opacity: .45; }

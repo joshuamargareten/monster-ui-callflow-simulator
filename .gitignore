@@ -1,0 +1,17 @@
+node_modules/
+
+# never commit real account data
+.private/
+*.snapshot.json
+
+# local-only: the Monster UI dev checkout (incl. third-party apps), reference material
+# (Monster docs corpus, Dimensions' commercial DT-Callflows) and internal notes
+monster-dev/
+reference/
+*.zip
+Monster-UI-Notes.md
+SkySwitch-CRV-Teardown.md
+.claude/
+
+# marketing video made from a real account (staff names) - never public
+promo/

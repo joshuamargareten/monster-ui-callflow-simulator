@@ -1,0 +1,37 @@
+{
+	"name": "call-route-visualizer",
+	"api_url": "http://kazoo.example.com:8000/v2/",
+	"i18n": {
+		"en-US": {
+			"label": "Call Routing Visualizer",
+			"description": "See and simulate where every call to an account goes.",
+			"extended_description": "Pick a number, a callflow or the whole account and see its routing as a live map — time-of-day rules, menus, queues, voicemail and callflow jumps. Simulate any call at any date and time, press menu keys, play every greeting, and spot broken configuration such as deleted references and rules Kazoo cannot evaluate.",
+			"features": [
+				"Routing map by number, callflow or whole account",
+				"Call simulation at any date and time, using Kazoo's own time-of-day logic",
+				"Menus drawn as a phone keypad — press keys to follow the call",
+				"Play every greeting, hold music and Kazoo's default voicemail greeting",
+				"Live registration status and readable details for every step",
+				"Finds broken or dead configuration; PDF export to share without a login"
+			]
+		}
+	},
+	"tags": ["reseller", "admin"],
+	"icon": "call-route-visualizer.png",
+	"author": "Teklink",
+	"version": "1.0.0",
+	"license": "MIT",
+	"price": 0,
+	"screenshots": [
+		"call-route-visualizer_1.png",
+		"call-route-visualizer_2.png",
+		"call-route-visualizer_3.png",
+		"call-route-visualizer_4.png"
+	],
+	"urls": {
+		"documentation": "https://github.com/{owner}/monster-ui-call-route-visualizer#readme",
+		"howto": "https://github.com/{owner}/monster-ui-call-route-visualizer#install"
+	},
+	"masqueradable": true,
+	"pvt_type": "app"
+}

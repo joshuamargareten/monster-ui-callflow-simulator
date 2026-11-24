@@ -1,0 +1,320 @@
+{
+  "11a4bb50a8926da2f941df91633a94bf": {
+    "cycle": "weekly",
+    "id": "11a4bb50a8926da2f941df91633a94bf",
+    "interval": 1,
+    "name": "MainMonday",
+    "start_date": 62586115200,
+    "time_window_start": 0,
+    "time_window_stop": 84600,
+    "type": "main_weekdays",
+    "ui_metadata": {
+      "origin": "voip",
+      "ui": "monster-ui",
+      "version": "5.0-27"
+    },
+    "wdays": [
+      "monday",
+      "tuesday"
+    ]
+  },
+  "139523c1d19d20fae6445e497a4cd479": {
+    "cycle": "date",
+    "id": "139523c1d19d20fae6445e497a4cd479",
+    "interval": 1,
+    "name": "12/11/22 12 AM - Noon",
+    "start_date": 63838022399,
+    "time_window_start": 0,
+    "time_window_stop": 43200,
+    "ui_metadata": {
+      "origin": "callflows",
+      "ui": "monster-ui",
+      "version": "5.1-8"
+    },
+    "wdays": [
+      "sunday"
+    ]
+  },
+  "91309fc8bdd63d906d87571bde9f36bb": {
+    "cycle": "weekly",
+    "id": "91309fc8bdd63d906d87571bde9f36bb",
+    "interval": 1,
+    "name": "Night test",
+    "start_date": 63679582800,
+    "time_window_start": 47700,
+    "time_window_stop": 86100,
+    "ui_metadata": {
+      "origin": "callflows",
+      "ui": "monster-ui",
+      "version": "4.1-56"
+    },
+    "wdays": [
+      "monday",
+      "tuesday",
+      "wensday",
+      "thursday",
+      "friday",
+      "saturday",
+      "sunday"
+    ]
+  },
+  "f8e548a750bd927faf805881d8a608cb": {
+    "cycle": "date",
+    "id": "f8e548a750bd927faf805881d8a608cb",
+    "interval": 1,
+    "name": "Holiday 2022 Wed",
+    "start_date": 63817718399,
+    "time_window_start": 43200,
+    "time_window_stop": 57600,
+    "ui_metadata": {
+      "origin": "callflows",
+      "ui": "monster-ui",
+      "version": "5.0-62"
+    },
+    "wdays": [
+      "sunday"
+    ]
+  },
+  "a7ba19eb7468ba30e9cc4f6217825fd9": {
+    "cycle": "daily",
+    "id": "a7ba19eb7468ba30e9cc4f6217825fd9",
+    "interval": 1,
+    "name": "Holiday 2022 Thu",
+    "start_date": 63817804799,
+    "time_window_start": 32400,
+    "time_window_stop": 43200,
+    "ui_metadata": {
+      "origin": "callflows",
+      "ui": "monster-ui",
+      "version": "5.0-62"
+    },
+    "wdays": [
+      "sunday"
+    ]
+  },
+  "46ef72d5a51731d5199e009be3248388": {
+    "cycle": "yearly",
+    "enabled": true,
+    "id": "46ef72d5a51731d5199e009be3248388",
+    "interval": 1,
+    "month": 1,
+    "name": "Forced-on test",
+    "ordinal": "first",
+    "showSave": true,
+    "start_date": 62586115200,
+    "time_window_start": 32400,
+    "time_window_stop": "61200",
+    "ui_metadata": {
+      "origin": "callflows",
+      "ui": "monster-ui",
+      "version": "4.0-35"
+    },
+    "wdays": [
+      "sunday"
+    ]
+  },
+  "384cfb127041eed8beba79541a888f89": {
+    "cycle": "weekly",
+    "id": "384cfb127041eed8beba79541a888f89",
+    "interval": 1,
+    "name": "MainOpenHours",
+    "start_date": 62586115200,
+    "time_window_start": 32400,
+    "time_window_stop": 84600,
+    "type": "main_weekdays",
+    "ui_metadata": {
+      "origin": "voip",
+      "ui": "monster-ui",
+      "version": "5.0-27"
+    },
+    "wdays": [
+      "wednesday",
+      "thursday"
+    ]
+  },
+  "adca1a11eacacd0adfb91f7e91aba587": {
+    "cycle": "date",
+    "id": "adca1a11eacacd0adfb91f7e91aba587",
+    "interval": 1,
+    "name": "12/10/2022 5:30 pm - midnight",
+    "start_date": 63837935999,
+    "time_window_start": 63000,
+    "time_window_stop": 86340,
+    "ui_metadata": {
+      "origin": "callflows",
+      "ui": "monster-ui",
+      "version": "5.1-8"
+    },
+    "wdays": [
+      "sunday"
+    ]
+  },
+  "75f7e2f42c42554b6e3f59bf0214c3dd": {
+    "cycle": "weekly",
+    "enabled": false,
+    "id": "75f7e2f42c42554b6e3f59bf0214c3dd",
+    "interval": 1,
+    "name": "Forced-off test",
+    "showSave": true,
+    "start_date": 63671457600,
+    "time_window_start": 32400,
+    "time_window_stop": "61200",
+    "ui_metadata": {
+      "origin": "callflows",
+      "ui": "monster-ui",
+      "version": "4.1-39"
+    },
+    "wdays": [
+      "sunday"
+    ]
+  },
+  "f7f206633ac2cc4e04df4690deaa2714": {
+    "cycle": "weekly",
+    "id": "f7f206633ac2cc4e04df4690deaa2714",
+    "interval": 1,
+    "name": "test",
+    "showDelete": true,
+    "showSave": true,
+    "start_date": 62586111600,
+    "time_window_start": 32490,
+    "time_window_stop": "61106",
+    "ui_metadata": {
+      "origin": "callflows",
+      "ui": "monster-ui",
+      "version": "4.0-31"
+    },
+    "wdays": []
+  },
+  "9d8df11e68951f0ec858f0b42d7cd6a9": {
+    "cycle": "date",
+    "id": "9d8df11e68951f0ec858f0b42d7cd6a9",
+    "interval": 1,
+    "name": "09/11/2026",
+    "start_date": 63956318400,
+    "time_window_start": 0,
+    "time_window_stop": 86400,
+    "ui_metadata": {
+      "origin": "callflows",
+      "ui": "monster-ui",
+      "version": "5.4-19.9"
+    },
+    "wdays": [
+      "sunday"
+    ]
+  },
+  "0b43ff7a80398b53fc97303e1821c6a2": {
+    "cycle": "weekly",
+    "id": "0b43ff7a80398b53fc97303e1821c6a2",
+    "interval": 1,
+    "name": "Day test",
+    "start_date": 63679669200,
+    "time_window_start": 36000,
+    "time_window_stop": 47400,
+    "ui_metadata": {
+      "origin": "callflows",
+      "ui": "monster-ui",
+      "version": "4.1-56"
+    },
+    "wdays": [
+      "monday",
+      "tuesday",
+      "wensday",
+      "thursday",
+      "friday",
+      "saturday",
+      "sunday"
+    ]
+  },
+  "18d293241767c573e2b9fe4ac066b63d": {
+    "cycle": "weekly",
+    "id": "18d293241767c573e2b9fe4ac066b63d",
+    "interval": 1,
+    "name": "MainSaturday",
+    "start_date": 62586115200,
+    "time_window_start": 32400,
+    "time_window_stop": 61200,
+    "type": "main_weekdays",
+    "ui_metadata": {
+      "origin": "voip",
+      "ui": "monster-ui",
+      "version": "5.1-8"
+    },
+    "wdays": [
+      "friday",
+      "sunday"
+    ]
+  },
+  "5e28508e0976d2c1b5907d5822e16307": {
+    "cycle": "weekly",
+    "id": "5e28508e0976d2c1b5907d5822e16307",
+    "interval": 1,
+    "name": "Forced test 2",
+    "showSave": true,
+    "start_date": 63671457600,
+    "time_window_start": 32400,
+    "time_window_stop": "61200",
+    "ui_metadata": {
+      "origin": "callflows",
+      "ui": "monster-ui",
+      "version": "4.1-39"
+    },
+    "wdays": [
+      "sunday"
+    ]
+  },
+  "90dbd13db87ec624b9411efda23fb4b5": {
+    "cycle": "weekly",
+    "id": "90dbd13db87ec624b9411efda23fb4b5",
+    "interval": 1,
+    "name": "Test rule",
+    "start_date": 63721656000,
+    "time_window_start": 0,
+    "time_window_stop": 86400,
+    "ui_metadata": {
+      "origin": "callflows",
+      "ui": "monster-ui",
+      "version": "4.3-17"
+    },
+    "wdays": [
+      "wensday"
+    ]
+  },
+  "571af7f199fd79712f96cde5cd5980ef": {
+    "cycle": "date",
+    "days": [
+      11
+    ],
+    "end_date": 63956404799,
+    "id": "571af7f199fd79712f96cde5cd5980ef",
+    "interval": 1,
+    "month": 9,
+    "name": "Holiday 2026",
+    "oldType": "rule",
+    "start_date": 63956318400,
+    "type": "main_holidays",
+    "ui_metadata": {
+      "origin": "voip",
+      "ui": "monster-ui",
+      "version": "5.4-19.9"
+    }
+  },
+  "4e4aab6c54e8ec302a32e4bde03d1c90": {
+    "cycle": "weekly",
+    "id": "4e4aab6c54e8ec302a32e4bde03d1c90",
+    "interval": 1,
+    "name": "Friday Summer",
+    "showDelete": true,
+    "showSave": true,
+    "start_date": 63666014400,
+    "time_window_start": 32400,
+    "time_window_stop": "45000",
+    "ui_metadata": {
+      "origin": "callflows",
+      "ui": "monster-ui",
+      "version": "4.0-35"
+    },
+    "wdays": [
+      "friday"
+    ]
+  }
+}

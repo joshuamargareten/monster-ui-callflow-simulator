@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRV Preview</title>
+<!--
+	Dev harness: the visualizer WITHOUT Monster or Kazoo, using the fictional synthetic account.
+	Like the real app it starts with only the lists and fetches the rest on demand — here from a
+	fake Kazoo with ~120ms latency, so lazy loading is visible. Serve the project root and open
+	/dev/preview.html.
+	  ?at=2026-11-20T10:00   pin the simulated "now" (account timezone)
+	  ?latency=0             fake-Kazoo latency in ms
+	  ?theme=embedded        Dimensions' embedded-portal design tokens (default: none, like a
+	                         regular portal)
+	  ?standalone=1          without DT-Callflows' stylesheet (how a stock Monster shows it)
+	  ?open=<number>  ?callflow=<id>  ?mode=account   open something on load
+	  ?node=<module>         then select the first step of that module (menu, ring_group, ...)
+	  ?play=1                then play that step's first recording
+	  ?press=2               press that key on the first menu
+	  ?zoom=1.8              then zoom in around that step (or ?focus=<module>)
+	  ?shot=1                hide the "preview" banner (for screenshots)
+	Styling: DT-Callflows' stylesheet + font when available in reference/dt-callflows (not part of
+	the public repo), otherwise the app's own fallback layout and Monster's sprite icons.
+-->
+<script>
+(function() {
+	var q = new URLSearchParams(location.search), css = function(h, onerror) { document.write('<link rel="stylesheet" href="' + h + '"' + (onerror ? ' onerror="' + onerror + '"' : '') + '>'); };
+	// DT-Callflows (Dimensions' commercial app) isn't part of this repo: when it's missing, the app's
+	// own fallback layout is used — exactly as on a Monster without DT-Callflows.
+	if (q.get('standalone')) { document.documentElement.classList.add('crv-standalone'); }
+	else {
+		css('../reference/dt-callflows/dt-callflows/style/app.css', "document.documentElement.classList.add('crv-standalone')");
+		css('../reference/dt-callflows/dt-callflows/style/fonts.css');
+	}
+	if (q.get('theme') === 'embedded') {
+		// Values the embedded portal's brand API returned (Xarios), for a faithful preview.
+		document.write('<style>:root{--backgroundColor1:hsl(180,3%,94%);--backgroundColor2:#fff;--backgroundColor6:hsl(0,0%,92%);' +
+			'--buttonColor1:hsl(245,67%,24%);--buttonColor2:hsl(206,5%,56%);--buttonColor4:hsl(202,100%,39%);--buttonColor7:hsl(44,93%,57%);' +
+			'--callflowActionColor1:hsl(229,22%,24%);--callflowActionColor2:#fff;--callflowActionColor4:hsl(229,22%,19%);' +
+			'--tableColor1:hsl(210,16%,93%);--textColor3:hsl(200,10%,36%);--textColor5:hsl(0,70%,48%);--agentStateColor1:hsl(144,48%,52%)}</style>');
+	}
+}());
+</script>
+<link rel="stylesheet" href="../app/style/icons.css">
+<link rel="stylesheet" href="../app/style/app.css">
+<style>
+	html, body { margin: 0; height: 100%; background: #f0f1f5; font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+	.core-content { height: 100vh; }
+	/* Monster's own button styles aren't on this page; a stand-in. */
+	.monster-button { border: 1px solid #c0c0c9; background: #fff; color: #3F4C51; border-radius: 4px; padding: 5px 12px; font: inherit; cursor: pointer; }
+	.monster-button-primary { background: #2aa9df; border-color: #2aa9df; color: #fff; }
+	.dev-banner { position: fixed; right: 10px; bottom: 6px; z-index: 99; font: 11px/1 sans-serif; color: #8a94a3; pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="core-content"><div id="root" style="height:100%"></div></div>
+<div class="dev-banner">preview · synthetic data</div>
+<script src="../node_modules/jquery/dist/jquery.min.js"></script>
+<script src="../app/lib/vendor/dagre.min.js"></script>
+<script src="../app/lib/temporal.js"></script>
+<script src="../app/lib/graph.js"></script>
+<script src="../app/lib/details.js"></script>
+<script src="../app/lib/loader.js"></script>
+<script src="../app/lib/canvas.js"></script>
+<script src="../app/lib/view.js"></script>
+<script>
+(function() {
+	var params = new URLSearchParams(location.search);
+	var latency = params.has('latency') ? +params.get('latency') : 120;
+	fetch('../test/fixtures/synthetic-account.json').then(function(r) { return r.json(); }).then(function(full) {
+		// What the real app has after start-up: only lists.
+		var list = {};
+		Object.keys(full.callflows).forEach(function(id) {
+			var cf = full.callflows[id];
+			list[id] = { name: cf.name, numbers: cf.numbers, featurecode: cf.featurecode };
+		});
+		var snapshot = { account: full.account, phone_numbers: full.phone_numbers, callflow_list: list, devices: full.devices };
+		window.fetchLog = [];
+		var loader = crvLoader.create({
+			snapshot: snapshot,
+			fetch: function(kind, id, cb) {
+				window.fetchLog.push(kind + ':' + id);
+				var doc = full[kind] && full[kind][id];
+				setTimeout(function() { cb(null, doc ? JSON.parse(JSON.stringify(doc)) : null); }, latency);
+			}
+		});
+
+		/** A mono 8 kHz WAV tone as a blob URL (cached per frequency/length). */
+		var tones = {};
+		function toneUrl(freq, secs) {
+			var k = freq + ':' + secs;
+			if (tones[k]) { return tones[k]; }
+			var rate = 8000, n = Math.floor(rate * secs), buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+			var str = function(o, t) { for (var j = 0; j < t.length; j++) { v.setUint8(o + j, t.charCodeAt(j)); } };
+			str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+			v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); str(36, 'data'); v.setUint32(40, n * 2, true);
+			for (var s = 0; s < n; s++) { v.setInt16(44 + s * 2, Math.sin(2 * Math.PI * freq * s / rate) * 6000 * Math.min(1, (n - s) / 800), true); }
+			return (tones[k] = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' })));
+		}
+
+		var nowFn, at = params.get('at');
+		var m = at && /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(at);
+		if (m) {
+			var tz = full.account.timezone, guess = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+			for (var i = 0; i < 2; i++) {
+				var l = crvTemporal._internals.toLocal(guess, tz);
+				guess += Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) - Date.UTC(l.y, l.m - 1, l.d, l.hour, l.minute);
+			}
+			nowFn = function() { return guess; };
+		}
+		window.crv = crvView.mount($('#root'), {
+			snapshot: snapshot,
+			now: nowFn,
+			ensure: function(entry, onProgress, done) { loader.ensure(entry, window.crv.entries, onProgress, done); },
+			// No Kazoo here: every recording / system prompt plays a short generated tone instead.
+			mediaUrl: function() { return toneUrl(440, 3); },
+			promptUrl: function(id) { return toneUrl(id === 'vm-person' ? 523 : 392, 1.2); }
+		});
+		autoOpen(window.crv, params);
+		if (params.get('shot')) { document.querySelector('.dev-banner').hidden = true; }
+
+	}).catch(function(e) { document.getElementById('root').textContent = 'Failed: ' + e; });
+	/** ?open / ?callflow / ?mode / ?node / ?play: put the page in a given state (screenshots). */
+	function autoOpen(v, params) {
+		var wait = function(test, then) { var n = 0, t = setInterval(function() { if (test() || ++n > 100) { clearInterval(t); then(); } }, 50); };
+		var afterLoad = function() {
+			var mod = params.get('node');
+			if (!mod) { window.crvReady = true; return; }
+			var node = Object.keys(v.graph.nodes).map(function(id) { return v.graph.nodes[id]; }).filter(function(n) { return n.module === mod || n.kind === mod; })[0];
+			if (node) { v._onNodeClick(node); }
+			if (params.get('press')) {
+				var menu = Object.keys(v.graph.nodes).map(function(id) { return v.graph.nodes[id]; }).filter(function(n) { return n.module === 'menu'; })[0];
+				if (menu) { v._press(menu.id, params.get('press')); }
+			}
+			if (node && params.get('play') && node.media && node.media[0]) { v._play(node.media[0], node); }
+			if (node && params.get('zoom')) {
+				// zoom in around the selected step (after the canvas's own initial fit)
+				setTimeout(function() {
+					var fm = params.get('focus'), fnode = fm ? Object.keys(v.graph.nodes).map(function(id) { return v.graph.nodes[id]; }).filter(function(n) { return n.module === fm; })[0] || node : node;
+					var el = document.querySelector('.crv-node[data-id="' + fnode.id.replace(/"/g, '\\"') + '"]'),
+						host = document.querySelector('.crv-canvas').getBoundingClientRect(), r = el.getBoundingClientRect();
+					v.canvas.zoomBy(+params.get('zoom'), (r.left + r.right) / 2 - host.left, (r.top + r.bottom) / 2 - host.top);
+					// then centre it (a little left of centre, so what it leads to shows)
+					r = el.getBoundingClientRect();
+					v.canvas.view.x += host.left + host.width * 0.42 - (r.left + r.right) / 2;
+					v.canvas.view.y += host.top + host.height / 2 - (r.top + r.bottom) / 2;
+					v.canvas._apply();
+					window.crvReady = true;
+				}, 200);
+				return;
+			}
+			window.crvReady = true;
+		};
+		var loaded = function() { return Object.keys(v.graph.nodes).length > 0; };
+		if (params.get('mode') === 'account') { v.setMode('account'); wait(loaded, afterLoad); }
+		else if (params.get('callflow')) { v.setMode('callflows'); v._select(params.get('callflow')); wait(loaded, afterLoad); }
+		else if (params.get('open')) { v._select(params.get('open')); wait(loaded, afterLoad); }
+		else { window.crvReady = true; }
+	}
+}());
+</script>
+</body>
+</html>

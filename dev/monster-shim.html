@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CRV Monster shim</title>
+<!--
+	Loads app/app.js the way Monster UI does — through RequireJS, with a fake `monster` module
+	whose callApi()/request() answer from the synthetic account using the real SDK resource
+	names. Proves the AMD wiring and the snapshot loader without a Kazoo server.
+	Every SDK/request call is logged to window.crvCalls for inspection.
+-->
+<link rel="stylesheet" href="../app/style/icons.css">
+<link rel="stylesheet" href="../app/style/app.css">
+<style>html, body { margin: 0; height: 100%; } #monster_content { height: 100vh; }</style>
+</head>
+<body>
+<div id="monster_content"></div>
+<script src="../node_modules/requirejs/require.js"></script>
+<script>
+window.crvCalls = [];
+require.config({
+	baseUrl: '../',
+	paths: {
+		jquery: 'node_modules/jquery/dist/jquery.min',
+		lodash: 'node_modules/lodash/lodash.min'
+	}
+});
+
+define('monster', ['jquery', 'lodash'], function($, _) {
+	var snap = null;
+	var withIds = function(coll) { return _.map(snap[coll] || {}, function(doc, id) { return _.assign({ id: id }, doc); }); };
+	var summary = function(coll, fields) { return withIds(coll).map(function(d) { return _.pick(d, ['id'].concat(fields)); }); };
+	var getDoc = function(coll, id) { return snap[coll] && snap[coll][id] ? _.assign({ id: id }, snap[coll][id]) : null; };
+
+	// Answers in the same shape Crossbar would. Lists deliberately return SUMMARIES only, so the
+	// app has to fetch full docs exactly as it must against a real Kazoo.
+	var SDK = {
+		'account.get': function() { return snap.account; },
+		'callflow.list': function() { return summary('callflows', ['name', 'numbers', 'featurecode']); },
+		'callflow.get': function(d) { return getDoc('callflows', d.callflowId); },
+		'menu.list': function() { return summary('menus', ['name']); },
+		'menu.get': function(d) { return getDoc('menus', d.menuId); },
+		'voicemail.list': function() { return summary('vmboxes', ['name', 'mailbox']); },
+		'voicemail.get': function(d) { return getDoc('vmboxes', d.voicemailId); },
+		'temporalRule.list': function() { return summary('temporal_rules', ['name']); },
+		'temporalRule.get': function(d) { return getDoc('temporal_rules', d.ruleId); },
+		'user.list': function() { return summary('users', ['first_name', 'last_name', 'presence_id', 'username']); },
+		'device.list': function() { return summary('devices', ['name', 'device_type', 'owner_id']); },
+		'group.list': function() { return summary('groups', ['name']); },
+		'media.list': function() { return summary('media', ['name', 'media_source']); },
+		'directory.list': function() { return summary('directories', ['name']); },
+		'conference.list': function() { return summary('conferences', ['name']); },
+		'numbers.list': function() { return { numbers: snap.phone_numbers }; },
+		'device.getStatus': function() { return []; }
+	};
+	var REQ = {
+		'crv.ruleSets.list': function() { return summary('temporal_rules_sets', ['name']); },
+		'crv.ruleSets.get': function(d) { return getDoc('temporal_rules_sets', d.setId); },
+		'crv.qubicle.list': function() { return summary('qubicle_queues', ['name']); },
+		'crv.qubicle.get': function(d) { return getDoc('qubicle_queues', d.queueId); },
+		'crv.directories.get': function(d) { return getDoc('directories', d.directoryId); },
+		'crv.faxboxes.get': function(d) { return getDoc('faxboxes', d.faxboxId); }
+	};
+	var answer = function(table, kind) {
+		return function(p) {
+			window.crvCalls.push(kind + ' ' + p.resource);
+			setTimeout(function() {
+				var fn = table[p.resource];
+				var data = fn ? fn(p.data || {}) : undefined;
+				if (data === undefined || data === null) { p.error && p.error({ error: '404' }); } else { p.success && p.success({ data: data }); }
+			}, 5);
+		};
+	};
+
+	return {
+		_setSnapshot: function(s) { snap = s; },
+		util: { getAuthToken: function() { return 'shim-token'; } },
+		request: answer(REQ, 'request'),
+		parallel: function(tasks, cb) {
+			var keys = _.keys(tasks), out = {}, left = keys.length, failed = false;
+			_.each(keys, function(k) {
+				tasks[k](function(err, res) {
+					if (failed) { return; }
+					if (err) { failed = true; return cb(err); }
+					out[k] = res;
+					if (--left === 0) { cb(null, out); }
+				});
+			});
+		},
+		pub: function(topic, args) {
+			if (topic !== 'auth.initApp') { return; }
+			var app = args.app;
+			app.accountId = 'acct-synthetic';
+			app.apiUrl = 'https://kazoo.invalid/v2/';
+			app.callApi = answer(SDK, 'callApi');
+			args.callback && args.callback();
+		}
+	};
+});
+
+require(['jquery', 'monster', 'app/app'], function($, monster, app) {
+	$.when($.getJSON('../test/fixtures/synthetic-account.json'), $.getJSON('../app/i18n/en-US.json')).done(function(s, i18n) {
+		monster._setSnapshot(s[0]);
+		app.i18n = { active: function() { return i18n[0]; } };
+		app.load(function(self) {
+			self.render($('#monster_content'));
+			window.crvApp = self;
+		});
+	});
+}, function(err) {
+	document.body.textContent = 'RequireJS failed: ' + err;
+	window.crvLoadError = String(err);
+});
+</script>
+</body>
+</html>
