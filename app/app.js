@@ -81,7 +81,8 @@ define(function(require) {
 			var self = this,
 				$container = _.isEmpty(container) ? $('#monster_content') : container,
 				i18n = self.i18n.active().callRouteVisualizer || {},
-				$root = $('<div class="crv-host"></div>');
+				// The wrapper carries the app's name (id and class), like the folder, app.json and `name` above.
+				$root = $('<div id="' + self.name + '" class="' + self.name + ' crv-host"></div>');
 
 			if (self.view) { self.view.destroy(); self.view = null; }
 			$container.empty().append($root);

@@ -55,26 +55,39 @@ Screenshots use a fictional demo account (`test/fixtures/synthetic-account.json`
 
 ## Install
 
-The Monster app is the [`app/`](app/) folder. It has no build step and no Handlebars templates.
+> [!IMPORTANT]
+> **The installed folder must be named exactly `call-route-visualizer`.** Monster loads
+> `apps/call-route-visualizer/app.js`; any other folder name (such as GitHub's
+> `monster-ui-call-route-visualizer-main`) gives a 404 and "app not available".
+> The release download below is already named correctly: use it rather than *Code → Download ZIP*.
+
+The Monster app is the [`app/`](app/) folder of this repository. It has no build step and no
+Handlebars templates. The app's name, `call-route-visualizer`, is the same everywhere: the app-store
+record (`metadata/app.json`), `app.js`, the folder, and the page's wrapper element.
 
 ### 1. Put the files in Monster
 
-**A built Monster** (the files your web server serves) — copy the folder in:
+**Download the ready-to-install folder** from the
+[latest release](https://github.com/joshuamargareten/monster-ui-call-route-visualizer/releases/latest)
+(`call-route-visualizer.zip` or `.tar.gz`, both contain a single `call-route-visualizer/` folder):
 
 ```bash
-git clone https://github.com/joshuamargareten/monster-ui-call-route-visualizer.git
-cp -r monster-ui-call-route-visualizer/app /var/www/monster-ui/apps/call-route-visualizer
+cd /var/www/monster-ui/apps          # the apps/ folder your web server serves
+curl -sL https://github.com/joshuamargareten/monster-ui-call-route-visualizer/releases/latest/download/call-route-visualizer.tar.gz | tar xz
+ls call-route-visualizer/app.js      # check: this path must exist
 ```
 
-**Monster from source** — copy it into `src/apps/` and build as usual; the app is bundled into
-`main.js` like the others:
+**Monster from source**: put the same folder in `src/apps/` and build as usual; the app is bundled
+into `main.js` like the others:
 
 ```bash
-cp -r monster-ui-call-route-visualizer/app monster-ui/src/apps/call-route-visualizer
-cd monster-ui && gulp build-prod
+cd monster-ui/src/apps
+curl -sL https://github.com/joshuamargareten/monster-ui-call-route-visualizer/releases/latest/download/call-route-visualizer.tar.gz | tar xz
+cd ../.. && gulp build-prod
 ```
 
-The folder must be named `call-route-visualizer` (the app's name).
+From a clone instead, copy **`app/`** (not the repository) under the app's name:
+`cp -r monster-ui-call-route-visualizer/app <monster>/apps/call-route-visualizer`.
 
 ### 2. Register it in the app store
 
@@ -84,9 +97,19 @@ On a Kazoo server that can read the app folder:
 sup crossbar_maintenance init_app '/var/www/monster-ui/apps/call-route-visualizer' 'https://kazoo.example.com:8443/v2/'
 ```
 
-This reads [`app/metadata/app.json`](app/metadata/app.json) (name, description, icon,
-screenshots, `masqueradable: true`). The second argument is your Crossbar API URL as the browser
-sees it.
+This reads [`app/metadata/app.json`](app/metadata/app.json), validates it against Kazoo's `app`
+schema (all 8 required fields are present: `api_url`, `author`, `i18n`, `icon`, `license`,
+`name`, `price`, `version`), and uploads the icon and screenshots from `metadata/icon/` and
+`metadata/screenshots/`.
+
+About `api_url`: the file has a placeholder so validation passes; Kazoo then stores **the second
+argument** in its place (with no second argument it stores none, and Monster uses its default
+API). So pass your Crossbar API URL as the browser sees it, or edit `api_url` in the file first.
+
+Already registered? `init_app` only updates `api_url` and the images of an existing app; use
+`sup crossbar_maintenance refresh_app '<path>' '<api_url>'` to also update its texts, tags,
+version, author, license and price (Kazoo never updates `masqueradable` or `urls` of an existing
+record).
 
 ### 3. Enable it
 
