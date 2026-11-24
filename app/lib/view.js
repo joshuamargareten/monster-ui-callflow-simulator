@@ -1,5 +1,5 @@
 /**
- * view.js — the visualizer UI.
+ * view.js — the simulator UI.
  *
  * Built on DT-Callflows' own markup (#callflow_container, .left-bar-container, li.list-element,
  * .entity-header, .search-box, .monster-button) so that DT-Callflows' stylesheet and the
@@ -13,8 +13,12 @@
  *     mediaUrl:  function(mediaId) -> url|null,          // an account media file
  *     promptUrl: function(promptId, lang) -> url|null,   // a Kazoo system prompt (en-us/vm-person)
  *     pickers: { date: fn($input, onChange(y, m, d)) -> { set(at) },
- *                time: fn($input, onChange(hour, minute)) -> { set(at) } }
+ *                time: fn($input, onChange(hour, minute)) -> { set(at) } },
  *                                     // Monster's own pickers; native inputs when omitted
+ *     locked: { entry, at, title }    // one route at one moment, e.g. from a call log: no list,
+ *                                     // no date/time controls. entry: { type: 'callflow', id } |
+ *                                     // { type: 'did', number }; at: ms since epoch, or
+ *                                     // { y, m, d, hour, minute } in the account's timezone
  *   });
  *
  * UMD, ES5.
@@ -29,14 +33,14 @@
 	'use strict';
 
 	var EN = {
-		title: 'Call Routing',
+		title: 'Callflow Simulator',
 		search: 'Search...',
 		modeNumbers: 'Numbers', modeCallflows: 'Callflows', modeAccount: 'Whole account',
 		filterAll: 'All', filterLocal: 'Local', filterTollfree: 'Toll-free', filterInternational: 'International', unassigned: 'Not assigned to a callflow',
 		listEmpty: 'Nothing matches.',
 		pickSomething: 'Pick a number or callflow on the left to see where its calls go.',
 		empty: 'Nothing to show.',
-		loading: 'Loading', loadFailed: 'Could not load this account\'s call routing.',
+		loading: 'Loading', loadFailed: 'Could not load this account\'s callflows.',
 		fit: 'Fit to screen', zoomIn: 'Zoom in', zoomOut: 'Zoom out', direction: 'Switch between left-to-right and top-to-bottom',
 		simulation: 'Simulate a call',
 		simHint: 'Pick when the call comes in. The path it takes lights up — press keys on a menu\'s keypad to choose.',
@@ -56,9 +60,52 @@
 		noAudio: 'Audio playback is not available here.',
 		timezone: 'Times are in',
 		exportPdf: 'Export PDF', exportHint: 'Opens a print view — choose "Save as PDF" to share it with someone who can\'t log in.',
-		exportTitle: 'Call routing', exportAccount: 'Account', exportShowing: 'Showing', exportSimulated: 'Simulated call',
-		exportGenerated: 'Generated', exportNothing: 'Pick something to export first.'
+		exportTitle: 'Callflow simulation', exportAccount: 'Account', exportShowing: 'Showing', exportSimulated: 'Simulated call',
+		exportGenerated: 'Generated', exportNothing: 'Pick something to export first.',
+		legend: 'Colours', legendHint: 'What the colours mean',
+		fam_bridge: 'Rings', fam_bridge_d: 'users, phones, groups, queues, conferences',
+		fam_outside: 'Outside', fam_outside_d: 'carrier, outside numbers, Pivot',
+		fam_input: 'Caller input', fam_input_d: 'menus, directory',
+		fam_media: 'Plays', fam_media_d: 'announcements, text-to-speech',
+		fam_mailbox: 'Messages', fam_mailbox_d: 'voicemail, fax',
+		fam_feature: 'Feature', fam_feature_d: 'feature codes and other actions',
+		fam_logic: 'Routing', fam_logic_d: 'time of day, jumps, caller ID',
+		fam_end: 'Ends the call', fam_end_d: 'hang up, SIP response, silence',
+		callerId: 'Caller\'s number', callerIdHint: 'Optional. Used by caller-ID checks, and sent to a pivot test.', callerIdAny: 'Any',
+		choose: 'Which way?',
+		fam_forward: 'Call forward', fam_forward_d: 'where a forwarded call goes',
+		lockedAt: 'Call received', lockedHint: 'The route this call took at that moment. Press keys on a menu\'s keypad to see what each choice would have done.',
+		lockedNotFound: 'This callflow no longer exists.',
+		switches: 'Switches',
+		switchesHint: 'Time rules that are switched by hand or forced on/off. Flip one to see where calls would go — nothing is changed in Kazoo.',
+		switchesLockedHint: 'Shown as they are now; they may have been switched differently when the call came in.',
+		swOn: 'On', swOff: 'Off', swSchedule: 'Schedule', swSaved: 'As saved', swManual: 'manual switch', swForced: 'forced',
+		pivotTest: 'Test this pivot…', pivotClear: 'Remove test reply', pivotTitle: 'Test pivot',
+		pivotWarnTitle: 'Before you send a test request',
+		pivotWarnData: 'Kazoo sends the call\'s details (caller ID, number dialled, call ID, account, digits collected, variables) with every pivot request. This test sends none of that — unless you tick "Send call data", and then only the values below: made up, or worked out from the route.',
+		pivotWarnServer: 'A server that expects call details may answer with an error, or treat the test as a real call (log it, send a message, change data). Test only servers you are responsible for; you do so at your own risk.',
+		pivotWarnIp: 'The request comes from this browser, from your own IP address — not from Kazoo. A firewall or allow-list on the server may block it.',
+		pivotWarnCors: 'The server must allow requests from a web page (CORS), or the browser can\'t read its reply. If so, paste the reply below instead.',
+		pivotWarnMixed: 'This URL is http:// and this page is https://, so the browser will block the request. Paste the reply below instead.',
+		pivotSample: 'Send call data',
+		pivotFromRoute: 'From this route', pivotFromRouteHint: 'What earlier steps would have collected or set by the time the call reaches this pivot. Type the digits a caller would enter.',
+		pivotCallData: 'Call details', pivotDigitsBy: 'Collected by', pivotSetBy: 'Set by',
+		pivotReply: 'Reply', pivotHttpError: 'The server answered with an error.', pivotBadJson: 'The reply is not valid JSON', pivotBadXml: 'The reply is not valid XML:',
+		pivotLine: 'line', pivotColumn: 'column', pivotAgree: 'I understand. Send the test request.',
+		pivotSend: 'Send test request', pivotSending: 'Sending…', pivotPaste: 'Or paste a reply from the server', pivotUse: 'Use this reply',
+		pivotErrNet: 'No reply the browser could read. The server may be down or slow, may be blocking your IP address, or may not allow requests from a web page (CORS). You can paste a reply instead.',
+		pivotErrTimeout: 'The server did not answer in time. In a real call Kazoo would give up too and take the "If the server fails" branch.',
+		pivotFailBranch: 'Kazoo would treat this as a failed pivot and take the "If the server fails" branch.',
+		pivotDrawn: 'The reply is drawn on the map after the pivot step, and the simulation follows it.',
+		pivotNotFlow: 'This is not a Kazoo callflow. Kazoo expects { "module": …, "data": …, "children": … }.',
+		pivotWholeDoc: 'This is a whole callflow document. Kazoo expects only its "flow" part ({ "module": …, "data": …, "children": … }).',
+		pivotXml: 'An XML (TwiML) reply. Kazoo runs these verbs in order — they are not drawn on the map:',
+		pivotEmpty: 'The server replied with nothing.',
+		pivotStatus: 'Server answered'
 	};
+	var FAMILIES = ['bridge', 'outside', 'input', 'media', 'mailbox', 'end', 'feature', 'logic'];
+	var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+	var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 	var WEEKDAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 	// Numbers mode lists DIDs only (extensions and feature codes are reached through Callflows).
@@ -73,6 +120,9 @@
 	function ymd(d) { return d.y + '-' + pad2(d.m) + '-' + pad2(d.d); }
 	function jsDay(d) { return new Date(Date.UTC(d.y, d.m - 1, d.d)).getUTCDay(); }
 	function norm(s) { return String(s || '').toLowerCase().replace(/[()\s.+-]/g, ''); }
+	function whenText(at) {
+		return DAYS[jsDay(at)] + ', ' + MONTHS[at.m - 1] + ' ' + at.d + ', ' + at.y + ' · ' + ((at.hour % 12) || 12) + ':' + pad2(at.minute) + (at.hour < 12 ? ' AM' : ' PM');
+	}
 	function clockText(sec) { sec = Math.max(0, Math.floor(sec || 0)); return Math.floor(sec / 60) + ':' + pad2(sec % 60); }
 
 	/** Plain browser inputs, for when the host (the preview page) has no Monster pickers. */
@@ -110,8 +160,13 @@
 		this.state = {
 			mode: 'numbers', filter: 'all', query: '', selected: null,
 			simStart: null, at: null, outcome: 'answered', digits: {}, hideOffPath: false,
-			selectedNode: null, direction: 'LR'
+			selectedNode: null, direction: 'LR',
+			force: {} // ruleId -> true | false | undefined (schedule): switches flipped in the simulator
 		};
+		this.pivotReplies = {}; // pivot node id -> id of the virtual callflow holding a test reply
+		this.fetchFn = opts.fetch || (typeof window !== 'undefined' && window.fetch ? window.fetch.bind(window) : null);
+		this.locked = opts.locked && opts.locked.entry ? opts.locked : null;
+		if (this.locked && this.locked.callerId) { this.state.callerId = String(this.locked.callerId); }
 		this._render();
 	}
 
@@ -153,6 +208,13 @@
 									'<button type="button" data-zoom="fit" data-alt="⤢" title="' + t('fit') + '"><span class="crv-glyph-sm">fit_screen</span></button>' +
 									'<button type="button" data-zoom="dir" data-alt="⇄" title="' + t('direction') + '"><span class="crv-glyph-sm">swap_calls</span></button>' +
 								'</div>' +
+								'<div class="crv-legend">' +
+									'<ul class="crv-legend__list" hidden>' + FAMILIES.map(function(f) {
+										return '<li class="crv-fam--' + f + '"><span class="crv-legend__swatch' + (f === 'logic' ? ' crv-legend__swatch--logic' : '') + '"></span><b>' + t('fam_' + f) + '</b>' + t('fam_' + f + '_d') + '</li>';
+									}).join('') + '<li><span class="crv-legend__swatch crv-legend__swatch--fwd"></span><b>' + t('fam_forward') + '</b>' + t('fam_forward_d') + '</li></ul>' +
+									'<button type="button" class="crv-legend__toggle" title="' + t('legendHint') + '" aria-expanded="false"><span class="crv-legend__dots" aria-hidden="true">' +
+										FAMILIES.slice(0, 7).map(function(f) { return '<i class="crv-fam--' + f + '"></i>'; }).join('') + '</span>' + t('legend') + '</button>' +
+								'</div>' +
 								'<div class="crv-player" hidden role="status" aria-live="polite">' +
 									'<span class="crv-player__eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>' +
 									'<div class="crv-player__info"><div class="crv-player__title"></div><div class="crv-player__bar" title=""><span></span></div></div>' +
@@ -185,12 +247,23 @@
 
 		self._bind();
 		self._setNow();
+		self._detectGlyphFont();
+		if (self.locked) {
+			// No list and no mode picker; the search finds steps on the map (as in Whole account).
+			self.state.mode = 'account';
+			self.$root.addClass('crv-locked crv-mode-account');
+			self.$root.find('.crv-search').attr('placeholder', self.t('accountSearch'));
+			self.canvas.render(self.graph, self.t('loading') + '…');
+			self._shownKey = 'full';
+			// Next tick: the host's ensure() may reference the view mount() is about to return.
+			setTimeout(function() { if (self.canvas) { self._open(self._lockedEntry()); } }, 0);
+			return;
+		}
 		self._renderList();
 		self._renderSim();
 		self._renderProblems();
 		self.canvas.render(self.graph, self.t('pickSomething'));
 		self._shownKey = 'full';
-		self._detectGlyphFont();
 	};
 
 	/** DT-Callflows' Material Symbols font may be absent (e.g. app used without it): fall back to sprites. */
@@ -227,6 +300,12 @@
 			else { self.canvas.fit(); }
 		});
 		$r.on('click', '.crv-export', function() { self.exportPdf(); });
+		$r.on('click', '.crv-legend__toggle', function() {
+			var $list = $r.find('.crv-legend__list'), open = $list.prop('hidden');
+			$list.prop('hidden', !open); $(this).attr('aria-expanded', open ? 'true' : 'false');
+		});
+		$r.on('click', '.crv-details .crv-pivot-test', function() { var n = self.graph.nodes[self.state.selectedNode]; if (n) { self._pivotDialog(n); } });
+		$r.on('click', '.crv-details .crv-pivot-clear', function() { var n = self.graph.nodes[self.state.selectedNode]; if (n) { self._setPivotReply(n, null); } });
 		$r.on('click', '.crv-details [data-close]', function() { self.state.selectedNode = null; self._renderDetails(); self._paintState(); });
 		$r.on('click', '.crv-details [data-dmedia]', function(e) {
 			e.stopPropagation();
@@ -299,7 +378,7 @@
 		var match = function() { for (var i = 0; i < arguments.length; i++) { if (!q || norm(arguments[i]).indexOf(q) !== -1) { return true; } } return false; };
 		if (s.mode === 'callflows') {
 			var list = self.snap.callflow_list || self.snap.callflows || {};
-			return Object.keys(list).map(function(id) {
+			return Object.keys(list).filter(function(id) { return !list[id]._virtual; }).map(function(id) {
 				var cf = list[id], nums = (cf.numbers || []);
 				return { value: id, title: cf.name || nums[0] || id, description: nums.join(', ') };
 			}).filter(function(x) { return match(x.title, x.description); })
@@ -361,17 +440,20 @@
 	/* ---------------------------------- loading + graph --------------------------------- */
 
 	/** Fetch what `entry` needs (if a loader was given), then build and draw it. */
-	View.prototype._open = function(entry) {
+	View.prototype._open = function(entry, keep) {
 		var self = this, token = ++self.loadToken, $busy = self.$root.find('.crv-busy');
+		self.currentEntry = entry;
 		var finish = function() {
 			if (token !== self.loadToken) { return; } // the user already picked something else
 			$busy.prop('hidden', true);
 			self.entries = crvGraph.listEntries(self.snap);
-			self.graph = crvGraph.build(self.snap, entry);
-			var s = self.state;
+			self.graph = crvGraph.build(self.snap, entry, { pivotReplies: self.pivotReplies });
+			var s = self.state, prevStart = s.simStart;
 			s.simStart = self.graph.roots.length === 1 ? self.graph.roots[0] : null;
-			s.digits = {}; s.selectedNode = null;
-			self.canvas.render(self.graph, self.t('empty'));
+			if (keep && prevStart && self.graph.nodes[prevStart]) { s.simStart = prevStart; }
+			if (!keep) { s.digits = {}; s.force = {}; }
+			s.selectedNode = keep && self.graph.nodes[keep.selected] ? keep.selected : null;
+			self.canvas.render(self.graph, self.t(self.locked && !self.graph.roots.length ? 'lockedNotFound' : 'empty'));
 			self._shownKey = 'full';
 			self._markPlaying();
 			self._renderSim();
@@ -399,7 +481,9 @@
 	/* ---------------------------------- simulation -------------------------------------- */
 
 	View.prototype._setNow = function() {
-		var l = crvTemporal._internals.toLocal(this.nowMs(), this.tz);
+		var at = this.locked && this.locked.at;
+		if (at && typeof at === 'object') { this.state.at = { y: at.y, m: at.m, d: at.d, hour: at.hour || 0, minute: at.minute || 0 }; return; }
+		var l = crvTemporal._internals.toLocal(typeof at === 'number' ? at : this.nowMs(), this.tz);
 		this.state.at = { y: l.y, m: l.m, d: l.d, hour: l.hour, minute: l.minute };
 	};
 
@@ -411,6 +495,35 @@
 			return;
 		}
 		var hasLive = self.snap.device_status && Object.keys(self.snap.device_status).length;
+		$p.off('input.crvcid').on('input.crvcid', '.crv-sim__cid', function() { s.callerId = this.value.trim(); s.digits = {}; self._simulate(); });
+		$p.off('click.crvsw').on('click.crvsw', '[data-sw]', function() {
+			var id = $(this).closest('[data-rule]').attr('data-rule'), v = $(this).attr('data-sw'), sw = self._switchRules().filter(function(r) { return r.id === id; })[0];
+			var want = v === 'on' ? true : (v === 'off' ? false : undefined);
+			if (sw && want === sw.stored) { delete s.force[id]; } else { s.force[id] = want; }
+			self._syncSim(); self._simulate();
+		});
+		if (self.locked) {
+			$p.html(
+				'<h3>' + t('simulation') + '</h3>' +
+				'<div class="crv-locked-when"><span class="crv-glyph-sm" aria-hidden="true">event</span><div><small>' + t('lockedAt') + '</small>' +
+					'<b>' + esc(whenText(s.at)) + '</b><small>' + t('timezone') + ' ' + esc(self.tz) + '</small></div></div>' +
+				'<p class="crv-muted">' + t('lockedHint') + '</p>' +
+				'<div class="crv-field"><span>' + t('outcome') + '</span><div class="crv-seg">' +
+					'<button type="button" data-outcome="answered">' + t('answered') + '</button>' +
+					'<button type="button" data-outcome="no-answer">' + t('noAnswer') + '</button>' +
+				'</div></div>' +
+				self._switchesHtml() +
+				'<label class="crv-field crv-sim__cidfield" title="' + t('callerIdHint') + '"><span>' + t('callerId') + '</span><input type="text" class="crv-sim__cid" inputmode="tel" autocomplete="off" placeholder="' + t('callerIdAny') + '"></label>' +
+				'<label class="crv-check"><input type="checkbox" class="crv-sim__hide"> ' + t('currentOnly') + '</label>' +
+				'<h4>' + t('callPath') + '</h4><ol class="crv-path"></ol><div class="crv-path__end"></div>' +
+				'<button type="button" class="monster-button crv-btn crv-sim__reset">' + t('reset') + '</button>'
+			);
+			$p.find('.crv-sim__hide').on('change', function() { s.hideOffPath = this.checked; self._paintState(); });
+			$p.find('[data-outcome]').on('click', function() { s.outcome = $(this).attr('data-outcome'); self._syncSim(); self._simulate(); });
+			$p.find('.crv-sim__reset').on('click', function() { s.digits = {}; s.force = {}; s.outcome = 'answered'; s.hideOffPath = false; self._syncSim(); self._simulate(); });
+			self._syncSim();
+			return;
+		}
 		$p.html(
 			'<h3>' + t('simulation') + '</h3>' +
 			'<p class="crv-muted">' + t('simHint') + '</p>' +
@@ -426,6 +539,8 @@
 				'<button type="button" data-outcome="no-answer">' + t('noAnswer') + '</button>' +
 				(hasLive ? '<button type="button" data-outcome="live" title="' + t('liveHint') + '">' + t('live') + '</button>' : '') +
 			'</div></div>' +
+			self._switchesHtml() +
+			'<label class="crv-field crv-sim__cidfield" title="' + t('callerIdHint') + '"><span>' + t('callerId') + '</span><input type="text" class="crv-sim__cid" inputmode="tel" autocomplete="off" placeholder="' + t('callerIdAny') + '"></label>' +
 			'<label class="crv-check"><input type="checkbox" class="crv-sim__hide"> ' + t('currentOnly') + '</label>' +
 			'<h4>' + t('callPath') + '</h4><ol class="crv-path"></ol><div class="crv-path__end"></div>' +
 			'<button type="button" class="monster-button crv-btn crv-sim__reset">' + t('reset') + '</button>'
@@ -449,13 +564,21 @@
 		});
 		$p.find('.crv-sim__hide').on('change', function() { s.hideOffPath = this.checked; self._paintState(); });
 		$p.find('[data-outcome]').on('click', function() { s.outcome = $(this).attr('data-outcome'); changed(); });
-		$p.find('.crv-sim__reset').on('click', function() { s.digits = {}; s.outcome = 'answered'; s.hideOffPath = false; self._setNow(); changed(); });
+		$p.find('.crv-sim__reset').on('click', function() { s.digits = {}; s.force = {}; s.outcome = 'answered'; s.hideOffPath = false; self._setNow(); changed(); });
 		self._syncSim();
 	};
 
 	/** Puts the simulator's controls in line with state (without rebuilding them, so pickers stay put). */
 	View.prototype._syncSim = function() {
 		var s = this.state, $p = this.$root.find('.crv-sim'), at = s.at;
+		this._syncSwitches($p);
+		var $cid = $p.find('.crv-sim__cid');
+		if ($cid.length && $cid.val() !== (s.callerId || '')) { $cid.val(s.callerId || ''); }
+		if (this.locked) {
+			$p.find('[data-outcome]').each(function() { $(this).toggleClass('is-active', this.getAttribute('data-outcome') === s.outcome); });
+			$p.find('.crv-sim__hide').prop('checked', !!s.hideOffPath);
+			return;
+		}
 		if (!this._simPickers) { return; }
 		this._simPickers.date.set(at);
 		this._simPickers.time.set(at);
@@ -464,6 +587,62 @@
 		$p.find('[data-day]').each(function() { $(this).toggleClass('is-active', +this.getAttribute('data-day') === day); });
 		$p.find('[data-outcome]').each(function() { $(this).toggleClass('is-active', this.getAttribute('data-outcome') === s.outcome); });
 		$p.find('.crv-sim__hide').prop('checked', !!s.hideOffPath);
+	};
+
+	/**
+	 * Rules on this map that are switched by hand (DT manual night mode), forced on/off, or flipped
+	 * by a feature-code step on the map: [{ id, name, manual, stored: true|false|undefined }].
+	 */
+	View.prototype._switchRules = function() {
+		var self = this, snap = self.snap, out = [], seen = {}, g = self.graph;
+		var add = function(id, viaControl) {
+			var set = snap.temporal_rules_sets && snap.temporal_rules_sets[id];
+			if (set) { (set.temporal_rules || []).forEach(function(rid) { add(rid, viaControl); }); return; }
+			var r = snap.temporal_rules && snap.temporal_rules[id];
+			if (!r || seen[id]) { return; }
+			var stored = r.enabled === true || r.enabled === 'true' ? true : (r.enabled === false || r.enabled === 'false' ? false : undefined),
+				manual = crvTemporal.isManual(r);
+			if (!manual && stored === undefined && !viaControl) { return; }
+			seen[id] = true;
+			out.push({ id: id, name: r.name || id, manual: manual, stored: stored });
+		};
+		Object.keys(g.nodes).forEach(function(nid) {
+			var n = g.nodes[nid], d = n.data || {};
+			if (n.module !== 'temporal_route') { return; }
+			var control = d.action && d.action !== 'menu';
+			(d.rules || []).forEach(function(id) { add(id, control); });
+			if (d.rule_set) { add(d.rule_set, control); }
+			g.edges.forEach(function(e) { if (e.from === nid && e.ruleId) { add(e.ruleId, false); } });
+		});
+		return out;
+	};
+
+	View.prototype._switchesHtml = function() {
+		var self = this, list = self._switchRules(), t = function(k) { return esc(self.t(k)); };
+		if (!list.length) { return ''; }
+		return '<div class="crv-switches"><h4>' + t('switches') + '</h4><p class="crv-muted">' + t(self.locked ? 'switchesLockedHint' : 'switchesHint') + '</p>' +
+			list.map(function(r) {
+				var opts = r.manual ? ['on', 'off'] : ['on', 'off', 'schedule'];
+				return '<div class="crv-switch" data-rule="' + esc(r.id) + '"><span class="crv-switch__name"><span class="crv-glyph-sm" aria-hidden="true">' + (r.manual ? 'toggle_on' : 'schedule') + '</span>' +
+					esc(r.name) + '<small>' + t(r.manual ? 'swManual' : 'swForced') + '</small></span><span class="crv-seg crv-seg--sm">' +
+					opts.map(function(o) {
+						var v = o === 'on' ? true : (o === 'off' ? false : undefined);
+						return '<button type="button" data-sw="' + o + '"' + (v === r.stored ? ' title="' + t('swSaved') + '" class="is-saved"' : '') + '>' + t(o === 'on' ? 'swOn' : (o === 'off' ? 'swOff' : 'swSchedule')) + '</button>';
+					}).join('') + '</span></div>';
+			}).join('') + '</div>';
+	};
+
+	View.prototype._syncSwitches = function($p) {
+		var s = this.state, byId = {};
+		this._switchRules().forEach(function(r) { byId[r.id] = r; });
+		$p.find('.crv-switch[data-rule]').each(function() {
+			var id = this.getAttribute('data-rule'), r = byId[id];
+			if (!r) { return; }
+			var eff = Object.prototype.hasOwnProperty.call(s.force, id) ? s.force[id] : r.stored,
+				want = eff === true ? 'on' : (eff === false ? 'off' : 'schedule');
+			$(this).toggleClass('is-changed', Object.prototype.hasOwnProperty.call(s.force, id))
+				.find('[data-sw]').each(function() { $(this).toggleClass('is-active', this.getAttribute('data-sw') === want); });
+		});
 	};
 
 	View.prototype._press = function(nodeId, key) {
@@ -475,7 +654,7 @@
 	View.prototype._simulate = function() {
 		var self = this, s = self.state;
 		if (!s.simStart || !self.graph.nodes[s.simStart]) { self.lastSim = null; self._paintState(); return; }
-		self.lastSim = crvGraph.simulate(self.graph, self.snap, { start: s.simStart, at: { local: s.at }, outcome: s.outcome, digits: s.digits });
+		self.lastSim = crvGraph.simulate(self.graph, self.snap, { start: s.simStart, at: { local: s.at }, outcome: s.outcome, digits: s.digits, force: s.force, callerId: s.callerId || null });
 		var r = self.lastSim;
 		self.$root.find('.crv-path').html(r.steps.map(function(step) {
 			return '<li class="' + (step.returned ? 'is-return' : '') + '"><b>' + esc(step.label) + '</b>' + (step.detail ? '<small>' + esc(step.detail) + '</small>' : '') + '</li>';
@@ -486,6 +665,11 @@
 				.map(function(e) { return e.key; }).sort();
 			html += '<div class="crv-keys">' + keys.map(function(k) { return '<button type="button" data-key="' + esc(k) + '">' + esc(k) + '</button>'; }).join('') +
 				'<button type="button" data-key="timeout" class="crv-keys__none">' + esc(self.t('noInput')) + '</button></div>';
+		}
+		if (end.reason === 'awaiting-choice') {
+			html += '<div class="crv-choices"><small>' + esc(self.t('choose')) + '</small>' + (end.choices || []).map(function(c) {
+				return '<button type="button" class="monster-button crv-btn" data-key="' + esc(c.key) + '">' + esc(c.label) + '</button>';
+			}).join('') + '</div>';
 		}
 		self.$root.find('.crv-path__end').html(html).find('[data-key]').on('click', function() { self._press(end.nodeId, $(this).attr('data-key')); });
 		self._paintState();
@@ -561,12 +745,17 @@
 					'</div>';
 				}).join('') + '</div>';
 		};
-		var issues = (n.issues || []).filter(function(i) { return i.level !== 'info' || i.code === 'pivot'; });
+		var issues = (n.issues || []).filter(function(i) { return i.level !== 'info' || i.code === 'pivot' || i.code === 'skipped'; });
+		var pivotActions = n.module === 'pivot' && !n.skipped && n.data && n.data.voice_url
+			? '<div class="crv-dactions"><button type="button" class="monster-button monster-button-primary crv-btn crv-pivot-test">' + esc(self.t('pivotTest')) + '</button>' +
+				(self.pivotReplies[n.id] ? '<button type="button" class="monster-button crv-btn crv-pivot-clear">' + esc(self.t('pivotClear')) + '</button>' : '') + '</div>'
+			: '';
 		$d.prop('hidden', false).html(
-			'<div class="crv-dhead"><span class="crv-dhead__icon crv-glyph-sm" aria-hidden="true">' + esc(n.glyph || 'settings') + '</span>' +
+			'<div class="crv-dhead crv-fam--' + esc(n.family || 'feature') + '"><span class="crv-dhead__icon crv-glyph-sm" aria-hidden="true">' + esc(n.glyph || 'settings') + '</span>' +
 				'<div class="crv-dhead__titles"><div class="crv-dtype">' + esc(n.type || '') + '</div><h3>' + esc(n.label) + '</h3></div>' +
 				'<button type="button" class="crv-x" data-close aria-label="' + esc(self.t('close')) + '">&times;</button></div>' +
 			info.sections.map(function(sec) { return '<h4>' + esc(sec.title) + '</h4>' + (sec.items ? items(sec) : table(sec.rows || [])); }).join('') +
+			pivotActions +
 			(issues.length ? '<h4>' + esc(self.t('problems')) + '</h4><ul class="crv-issues">' + issues.map(function(i) { return '<li class="crv-issue crv-issue--' + esc(i.level) + '">' + esc(i.message) + '</li>'; }).join('') + '</ul>' : '')
 		);
 		self._markPlaying();
@@ -662,6 +851,339 @@
 		$pl.find('.crv-player__time').text(time);
 	};
 
+	/* ---------------------------------- pivot test ------------------------------------- */
+
+	// Request parameters Kazoo's pivot sends (kzt_kazoo / kzt_twiml req_params). Values in {} are
+	// filled in from the account and the route; the rest are made up.
+	var PIVOT_PARAMS = {
+		kazoo: [['Call-ID', 'crv-test-call'], ['Account-ID', '{account}'], ['From', '{from}'], ['To', '{number}'], ['Request', '{number}'],
+			['Caller-ID-Name', '{cidName}'], ['Caller-ID-Number', '{cidNumber}'], ['Direction', 'inbound'], ['Call-Status', 'ringing'],
+			['Language', '{language}'], ['Api-Version', '4.x']],
+		twiml: [['CallSid', 'crv-test-call'], ['AccountSid', '{account}'], ['From', '{from}'], ['To', '{number}'], ['CallerName', '{cidName}'],
+			['CallerNumber', '{cidNumber}'], ['CallStatus', 'ringing'], ['Direction', 'inbound'], ['ApiVersion', '2010-04-01']]
+	};
+
+	/** One path (node ids) from the simulated call's start to nodeId: the simulated path if it gets there. */
+	View.prototype._pathTo = function(nodeId) {
+		var g = this.graph, sim = this.lastSim, i;
+		if (sim) {
+			var ids = sim.steps.map(function(st) { return st.nodeId; });
+			i = ids.indexOf(nodeId);
+			if (i !== -1) { return ids.slice(0, i + 1); }
+		}
+		var starts = this.state.simStart ? [this.state.simStart] : g.roots.slice(), prev = {}, queue = starts.slice(), seen = {};
+		starts.forEach(function(id) { seen[id] = true; });
+		while (queue.length) {
+			var cur = queue.shift();
+			if (cur === nodeId) {
+				var path = [cur];
+				while (prev[path[0]]) { path.unshift(prev[path[0]]); }
+				return path;
+			}
+			g.edges.forEach(function(e) {
+				if (e.from === cur && e.kind !== 'dead' && !seen[e.to]) { seen[e.to] = true; prev[e.to] = cur; queue.push(e.to); }
+			});
+		}
+		return [nodeId];
+	};
+
+	/**
+	 * What the call would carry by the time it reaches this pivot, following the route to it:
+	 * digit collections (collect_dtmf / flush_dtmf), custom application variables (set_variables),
+	 * language, and caller ID changes (set_cid, prepend_cid, static dynamic_cid, check_cid).
+	 */
+	View.prototype._pivotRouteData = function(node) {
+		var self = this, g = self.graph, path = self._pathTo(node.id),
+			original = { name: 'Test Caller', number: self.state.callerId || '+15555550123' },
+			out = { digits: [], cavs: {}, language: String((self.snap.account && self.snap.account.language) || 'en-us').toLowerCase(),
+				cidName: original.name, cidNumber: original.number, from: original.number, notes: [] },
+			label = function(id) { return (g.nodes[id] && g.nodes[id].label) || id; };
+		path.forEach(function(id, idx) {
+			var n = g.nodes[id], d = (n && n.data) || {};
+			if (!n || n.skipped || id === node.id) { return; }
+			switch (n.module) {
+				case 'collect_dtmf':
+					var name = d.collection_name || 'default';
+					out.digits = out.digits.filter(function(x) { return x.name !== name; });
+					out.digits.push({ name: name, by: label(id), max: d.max_digits || 1 });
+					break;
+				case 'flush_dtmf':
+					out.digits = out.digits.filter(function(x) { return x.name !== (d.collection_name || 'default'); });
+					break;
+				case 'set_variables':
+					var v = d.custom_application_vars || {};
+					Object.keys(v).forEach(function(k) { out.cavs[k] = { value: String(v[k]), by: label(id) }; });
+					break;
+				case 'language':
+					if (d.language) { out.language = String(d.language).toLowerCase(); }
+					break;
+				case 'set_cid':
+					if (d.caller_id_name) { out.cidName = d.caller_id_name; }
+					if (d.caller_id_number) { out.cidNumber = d.caller_id_number; }
+					break;
+				case 'dynamic_cid':
+					if (d.action === 'static' && d.caller_id) {
+						if (d.caller_id.name) { out.cidName = d.caller_id.name; }
+						if (d.caller_id.number) { out.cidNumber = d.caller_id.number; }
+					}
+					break;
+				case 'prepend_cid':
+					if (d.action === 'reset') { out.cidName = original.name; out.cidNumber = original.number; }
+					else {
+						var base = d.apply_to === 'original' ? original : { name: out.cidName, number: out.cidNumber };
+						out.cidName = (d.caller_id_name_prefix || '') + base.name;
+						out.cidNumber = (d.caller_id_number_prefix || '') + base.number;
+					}
+					break;
+				case 'check_cid':
+					var via = g.edges.filter(function(e) { return e.from === id && e.to === path[idx + 1]; })[0],
+						ext = (d.caller_id && d.caller_id.external) || {};
+					if (via && via.key && via.key !== 'nomatch' && via.key !== '_') {
+						if (ext.name) { out.cidName = ext.name; }
+						if (ext.number) { out.cidNumber = ext.number; }
+					}
+					break;
+				case 'lookupcidname':
+					out.notes.push(label(id) + ' may replace the caller\'s name from a list.');
+					break;
+				case 'pivot':
+					out.notes.push('An earlier pivot (' + label(id) + ') may have set more variables.');
+					break;
+			}
+		});
+		return out;
+	};
+
+	/** Opens the "Test pivot" dialog for a pivot node: warnings first, sending only after consent. */
+	View.prototype._pivotDialog = function(node) {
+		var self = this, t = function(k) { return esc(self.t(k)); }, d = node.data || {},
+			method = String(d.method || 'get').toUpperCase(), url = String(d.voice_url || ''),
+			format = d.req_format === 'kazoo' ? 'kazoo' : 'twiml',
+			mixed = /^http:/i.test(url) && typeof location !== 'undefined' && location.protocol === 'https:',
+			route = self._pivotRouteData(node),
+			start = self.graph.nodes[self.state.simStart] || {},
+			fill = { account: (self.snap.account && self.snap.account.id) || '', number: start.number || '', from: route.from,
+				cidName: route.cidName, cidNumber: route.cidNumber, language: route.language },
+			field = function(name, value, note) {
+				return '<label class="crv-field"><span>' + esc(name) + '</span><input type="text" data-param="' + esc(name) + '" value="' + esc(value) + '">' +
+					(note ? '<small class="crv-muted">' + esc(note) + '</small>' : '') + '</label>';
+			};
+		var callFields = PIVOT_PARAMS[format].map(function(f) { return field(f[0], f[1].replace(/\{(\w+)\}/g, function(m, k) { return fill[k] || ''; })); }).join('');
+		// Kazoo sends collected digits as Digits[<collection>] and variables as Custom-Application-Vars[<name>].
+		var routeFields = route.digits.map(function(x) { return field('Digits[' + x.name + ']', '', self.t('pivotDigitsBy') + ' ' + x.by + (x.max > 1 ? ' (up to ' + x.max + ')' : '')); })
+			.concat(format === 'kazoo' ? Object.keys(route.cavs).map(function(k) { return field('Custom-Application-Vars[' + k + ']', route.cavs[k].value, self.t('pivotSetBy') + ' ' + route.cavs[k].by); }) : [])
+			.join('');
+		self.$root.find('.crv-modal').remove();
+		var $m = $('<div class="crv-modal" role="dialog" aria-modal="true" aria-label="' + t('pivotTitle') + '"><div class="crv-modal__box">' +
+			'<div class="crv-modal__head"><h3>' + t('pivotTitle') + '</h3><button type="button" class="crv-x" data-mclose aria-label="' + t('close') + '">&times;</button></div>' +
+			'<div class="crv-modal__body">' +
+				'<p class="crv-pivot__url"><b>' + esc(method) + '</b> <code>' + esc(url) + '</code></p>' +
+				'<div class="crv-warnbox"><b>' + t('pivotWarnTitle') + '</b><ul>' +
+					'<li>' + t('pivotWarnData') + '</li><li>' + t('pivotWarnServer') + '</li><li>' + t('pivotWarnIp') + '</li><li>' + t('pivotWarnCors') + '</li>' +
+					(mixed ? '<li class="is-strong">' + t('pivotWarnMixed') + '</li>' : '') +
+				'</ul></div>' +
+				'<label class="crv-check"><input type="checkbox" class="crv-pivot__sample"' + (method === 'POST' || routeFields ? ' checked' : '') + '> ' + t('pivotSample') + '</label>' +
+				'<div class="crv-pivot__params"' + (method === 'POST' || routeFields ? '' : ' hidden') + '>' +
+					(routeFields ? '<h4>' + t('pivotFromRoute') + '</h4><p class="crv-muted">' + t('pivotFromRouteHint') + '</p><div class="crv-pivot__fields">' + routeFields + '</div>' : '') +
+					(route.notes.length ? '<ul class="crv-pivot__notes">' + route.notes.map(function(x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' : '') +
+					'<h4>' + t('pivotCallData') + '</h4><div class="crv-pivot__fields">' + callFields + '</div>' +
+				'</div>' +
+				'<label class="crv-check crv-pivot__agree"><input type="checkbox" class="crv-pivot__ok"> ' + t('pivotAgree') + '</label>' +
+				'<div class="crv-dactions"><button type="button" class="monster-button monster-button-primary crv-btn crv-pivot__send" disabled>' + t('pivotSend') + '</button></div>' +
+				'<details class="crv-pivot__pastebox"><summary>' + t('pivotPaste') + '</summary>' +
+					'<textarea class="crv-pivot__paste" rows="6" spellcheck="false" placeholder="{ &quot;module&quot;: &quot;play&quot;, &quot;data&quot;: { &quot;id&quot;: &quot;…&quot; }, &quot;children&quot;: {} }"></textarea>' +
+					'<div class="crv-dactions"><button type="button" class="monster-button crv-btn crv-pivot__use">' + t('pivotUse') + '</button></div>' +
+				'</details>' +
+				'<div class="crv-pivot__result" aria-live="polite"></div>' +
+			'</div></div></div>').appendTo(self.$root);
+		var close = function() { if (self._pivotAbort) { self._pivotAbort(); } $m.remove(); };
+		$m.on('click', '[data-mclose]', close).on('click', function(e) { if (e.target === this) { close(); } })
+			.on('keydown', function(e) { if (e.key === 'Escape') { close(); } });
+		$m.find('.crv-pivot__sample').on('change', function() { $m.find('.crv-pivot__params').prop('hidden', !this.checked); });
+		$m.find('.crv-pivot__ok').on('change', function() { $m.find('.crv-pivot__send').prop('disabled', !this.checked); });
+		$m.find('.crv-pivot__use').on('click', function() {
+			var text = String($m.find('.crv-pivot__paste').val() || '');
+			self._showPivotReply($m, node, { status: 200, contentType: /^\s*</.test(text) ? 'text/xml' : 'application/json', body: text, pasted: true });
+		});
+		$m.find('.crv-pivot__send').on('click', function() {
+			var params = null;
+			if ($m.find('.crv-pivot__sample').prop('checked')) {
+				params = {};
+				$m.find('[data-param]').each(function() { if (this.value !== '') { params[this.getAttribute('data-param')] = this.value; } });
+			}
+			var $b = $(this).prop('disabled', true).text(self.t('pivotSending'));
+			self._sendPivot(d, params, function(res) {
+				$b.prop('disabled', !$m.find('.crv-pivot__ok').prop('checked')).text(self.t('pivotSend'));
+				self._showPivotReply($m, node, res);
+			});
+		});
+		$m.find('.crv-pivot__ok').trigger('focus');
+	};
+
+	/** "Digits[default]" -> { Digits: { default: … } }, for a JSON body (Kazoo sends nested objects). */
+	function nestParams(flat) {
+		var out = {};
+		Object.keys(flat).forEach(function(k) {
+			var m = /^([^[\]]+)\[([^[\]]+)\]$/.exec(k);
+			if (m) { (out[m[1]] = out[m[1]] && typeof out[m[1]] === 'object' ? out[m[1]] : {})[m[2]] = flat[k]; }
+			else { out[k] = flat[k]; }
+		});
+		return out;
+	}
+
+	// kz_http_util:json_to_querystring — nested values as Key[sub]=value, brackets left as they are.
+	function pivotQuery(flat) {
+		return Object.keys(flat).map(function(k) {
+			return encodeURIComponent(k).replace(/%5B/gi, '[').replace(/%5D/gi, ']') + '=' + encodeURIComponent(flat[k]);
+		}).join('&');
+	}
+
+	/**
+	 * One request the way Kazoo's pivot makes it (pivot_call:send_req): GET puts the parameters in
+	 * the query string; POST sends them as a form (default) or JSON (req_body_format).
+	 * callback({ status, contentType, body } | { error: 'network' | 'timeout' }).
+	 */
+	View.prototype._sendPivot = function(d, params, callback) {
+		var self = this, method = String(d.method || 'get').toLowerCase(), url = String(d.voice_url),
+			init = { method: method.toUpperCase(), mode: 'cors', credentials: 'omit', redirect: 'follow' };
+		if (!self.fetchFn) { return callback({ error: 'network' }); }
+		if (method === 'get') {
+			if (params && Object.keys(params).length) { url += (url.indexOf('?') === -1 ? '?' : '&') + pivotQuery(params); }
+		} else if (d.req_body_format === 'json') {
+			init.headers = { 'Content-Type': 'application/json' }; init.body = JSON.stringify(nestParams(params || {}));
+		} else {
+			init.headers = { 'Content-Type': 'application/x-www-form-urlencoded' }; init.body = pivotQuery(params || {});
+		}
+		var done = false, timer = null,
+			timeoutMs = Math.min(30000, +d.req_timeout_ms || 10000),
+			ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+		if (ctrl) { init.signal = ctrl.signal; }
+		var finish = function(res) { if (done) { return; } done = true; clearTimeout(timer); self._pivotAbort = null; callback(res); };
+		timer = setTimeout(function() { if (ctrl) { ctrl.abort(); } finish({ error: 'timeout' }); }, timeoutMs);
+		self._pivotAbort = function() { done = true; clearTimeout(timer); if (ctrl) { ctrl.abort(); } self._pivotAbort = null; };
+		self.fetchFn(url, init).then(function(r) {
+			return r.text().then(function(body) { finish({ status: r.status, contentType: (r.headers && r.headers.get('content-type')) || '', body: String(body).slice(0, 200000) }); });
+		}).catch(function() { finish({ error: 'network' }); });
+	};
+
+	/**
+	 * Why Kazoo would reject a JSON reply as a callflow flow (kzd_callflow:validate_flow), or null:
+	 * { code, path, why } — path like "children._.children.1".
+	 */
+	function flowProblem(flow) {
+		if (!flow || typeof flow !== 'object' || Array.isArray(flow)) {
+			return { code: 'pivotNotFlow', path: '', why: Array.isArray(flow) ? 'The reply is a list, not an object.' : 'The reply is not an object.' };
+		}
+		if (!flow.module && flow.flow && flow.flow.module) { return { code: 'pivotWholeDoc', path: '', why: '' }; }
+		var problem = null;
+		(function check(f, path, depth) {
+			if (problem) { return; }
+			var at = path || 'the top level';
+			if (depth > 60) { problem = { code: 'pivotNotFlow', path: path, why: 'Nested too deeply.' }; return; }
+			if (!f || typeof f !== 'object' || Array.isArray(f)) { problem = { code: 'pivotNotFlow', path: path, why: at + ' is not an object.' }; return; }
+			if (typeof f.module !== 'string' || !f.module) { problem = { code: 'pivotNotFlow', path: path, why: at + ' has no "module".' }; return; }
+			if (f.data !== undefined && (!f.data || typeof f.data !== 'object' || Array.isArray(f.data))) { problem = { code: 'pivotNotFlow', path: path, why: '"data" at ' + at + ' must be an object.' }; return; }
+			if (f.children !== undefined && (!f.children || typeof f.children !== 'object' || Array.isArray(f.children))) { problem = { code: 'pivotNotFlow', path: path, why: '"children" at ' + at + ' must be an object of branches.' }; return; }
+			Object.keys(f.children || {}).forEach(function(k) { check(f.children[k], (path ? path + '.' : '') + 'children.' + k, depth + 1); });
+		}(flow, '', 0));
+		return problem;
+	}
+
+	/** Where JSON.parse gave up, as { line, column, message } (engines word it differently). */
+	function jsonErrorAt(text, err) {
+		var msg = String(err && err.message || err), pos = null, m;
+		if ((m = /position (\d+)/i.exec(msg))) { pos = +m[1]; }
+		if ((m = /line (\d+) column (\d+)/i.exec(msg))) { return { line: +m[1], column: +m[2], message: msg }; }
+		if (pos === null) { return { line: null, column: null, message: msg }; }
+		var before = text.slice(0, pos).split('\n');
+		return { line: before.length, column: before[before.length - 1].length + 1, message: msg };
+	}
+
+	/** The reply with line numbers, the line `mark` highlighted (and a caret under column `col`). */
+	function replyListing(body, mark, col) {
+		var lines = String(body).split('\n');
+		return '<pre class="crv-pivot__listing">' + lines.slice(0, 2000).map(function(l, i) {
+			var n = i + 1, hit = n === mark;
+			return '<span class="crv-pivot__line' + (hit ? ' is-error' : '') + '"><i>' + n + '</i>' + esc(l) + '</span>' +
+				(hit && col ? '<span class="crv-pivot__line is-caret"><i></i>' + new Array(col).join(' ') + '^</span>' : '');
+		}).join('') + '</pre>';
+	}
+
+	/** Explains a pivot reply the way Kazoo would act on it, and draws a callflow reply on the map. */
+	View.prototype._showPivotReply = function($m, node, res) {
+		var self = this, t = function(k) { return esc(self.t(k)); }, $out = $m.find('.crv-pivot__result');
+		var raw = function(body) { return body ? '<details class="crv-pivot__raw"><summary>' + t('pivotReply') + '</summary><pre>' + esc(body.slice(0, 20000)) + '</pre></details>' : ''; };
+		// A reply Kazoo can't use: say why, then show it in full, open, with the bad spot marked.
+		var bad = function(msg, body, mark, col) {
+			$out.html(head + '<div class="crv-end crv-end--kazoo-error">' + msg + ' ' + t('pivotFailBranch') + '</div>' +
+				(body ? '<h4>' + t('pivotReply') + '</h4>' + replyListing(body, mark, col) : ''));
+		};
+		if (res.error) {
+			$out.html('<div class="crv-end crv-end--kazoo-error">' + t(res.error === 'timeout' ? 'pivotErrTimeout' : 'pivotErrNet') + '</div>');
+			return;
+		}
+		var head = res.pasted ? '' : '<p class="crv-muted">' + t('pivotStatus') + ' <b>' + esc(res.status) + '</b>' + (res.contentType ? ' · ' + esc(res.contentType) : '') + '</p>';
+		var body = String(res.body || ''), trimmed = body.trim();
+		if (!res.pasted && (res.status < 200 || res.status > 299)) { return bad(t('pivotHttpError'), body); }
+		if (!trimmed) { return bad(t('pivotEmpty'), ''); }
+		if (trimmed.charAt(0) === '<') {
+			// TwiML / Kazoo XML: listed, not drawn.
+			var xml = null, perr = null;
+			try { xml = new DOMParser().parseFromString(trimmed, 'text/xml'); perr = xml.getElementsByTagName('parsererror')[0] || null; } catch (e) { perr = { textContent: String(e.message || e) }; }
+			if (perr) {
+				// Chrome wraps the message in boilerplate; its inner <div> is just "error on line 1 at column 28: …".
+				var ptext = String((perr.querySelector && perr.querySelector('div') ? perr.querySelector('div').textContent : perr.textContent) || '').trim(),
+					pm = /line (?:number )?(\d+)/i.exec(ptext), cm = /column (\d+)/i.exec(ptext);
+				return bad(t('pivotBadXml') + ' ' + esc(ptext.split('\n')[0].slice(0, 200)), trimmed, pm ? +pm[1] : null, cm ? +cm[1] : null);
+			}
+			var verbs = Array.prototype.map.call(xml.documentElement.children || [], function(el) {
+				var attrs = Array.prototype.map.call(el.attributes, function(a) { return a.name + '="' + a.value + '"'; }).join(' '),
+					text = (el.textContent || '').trim();
+				return '<li><b>' + esc(el.tagName) + '</b>' + (attrs ? ' <small>' + esc(attrs) + '</small>' : '') + (text ? ' — ' + esc(text.slice(0, 120)) : '') + '</li>';
+			});
+			$out.html(head + '<p>' + t('pivotXml') + '</p><ol class="crv-pivot__verbs">' + verbs.join('') + '</ol>' + raw(trimmed));
+			return;
+		}
+		var flow = null;
+		try { flow = JSON.parse(trimmed); } catch (e) {
+			var at = jsonErrorAt(trimmed, e);
+			return bad(t('pivotBadJson') + (at.line ? ' (' + t('pivotLine') + ' ' + at.line + ', ' + t('pivotColumn') + ' ' + at.column + ')' : '') + ': ' + esc(at.message), trimmed, at.line, at.column);
+		}
+		var problem = flowProblem(flow);
+		if (problem) {
+			var pretty = JSON.stringify(flow, null, 2);
+			return bad(t(problem.code) + (problem.why ? ' ' + esc(problem.why) : ''), pretty, problem.path ? lineOfPath(pretty, problem.path) : null);
+		}
+		$out.html(head + '<div class="crv-end crv-end--answered">' + t('pivotDrawn') + '</div>' + raw(trimmed));
+		self._setPivotReply(node, flow);
+	};
+
+	// The line of a pretty-printed flow where `path` ("children._.children.1") begins.
+	function lineOfPath(pretty, path) {
+		var lines = pretty.split('\n'), parts = path.split('.'), depth = 0, li = 0;
+		for (var p = 0; p < parts.length; p++) {
+			var key = '"' + parts[p] + '":';
+			for (; li < lines.length; li++) { if (lines[li].trim().indexOf(key) === 0 && lines[li].search(/\S/) >= depth) { break; } }
+			if (li >= lines.length) { return null; }
+			depth = lines[li].search(/\S/) + 2;
+			li++;
+		}
+		return li;
+	}
+
+	/** Puts a test reply after a pivot step (flow = null removes it) and redraws. */
+	View.prototype._setPivotReply = function(node, flow) {
+		var self = this, cfs = self.snap.callflows = self.snap.callflows || {}, old = self.pivotReplies[node.id],
+			keep = { selected: node.id };
+		if (old) { delete cfs[old]; delete self.pivotReplies[node.id]; }
+		if (flow) {
+			var id = 'crv-pivot-reply-' + node.id.replace(/[^a-z0-9]/gi, '_');
+			cfs[id] = { id: id, name: self.t('pivotTitle'), numbers: [], flow: flow, _virtual: true };
+			self.pivotReplies[node.id] = id;
+		}
+		self._open(self.currentEntry, keep);
+	};
+
 	View.prototype._toast = function(msg) {
 		var $t = this.$root.find('.crv-toast').text(msg).prop('hidden', false);
 		clearTimeout(this._toastT);
@@ -679,7 +1201,8 @@
 		if (!Object.keys(self.graph.nodes).length) { self._toast(self.t('exportNothing')); return; }
 		var stage = self.$root.find('.crv-stage')[0].cloneNode(true), size = self.canvas.size,
 			scale = Math.min(1, 960 / Math.max(size.w, 1)),
-			showing = s.mode === 'account' ? self.t('modeAccount')
+			showing = self.locked ? (self.locked.title || self._lockedLabel())
+				: s.mode === 'account' ? self.t('modeAccount')
 				: s.mode === 'callflows' ? (((self.snap.callflow_list || self.snap.callflows || {})[s.selected] || {}).name || s.selected)
 				: crvGraph.formatNumber(s.selected),
 			sim = self.lastSim, at = s.at,
@@ -712,9 +1235,29 @@
 		self.lastExportHtml = html;
 	};
 
+	/**
+	 * A locked view's entry, with a dialled number matched the way Kazoo matches it: call logs
+	 * give "+18455550100@realm" or "8455550100" where the callflow lists "+18455550100".
+	 */
+	View.prototype._lockedEntry = function() {
+		var e = this.locked.entry;
+		if (e.type !== 'did') { return e; }
+		var number = String(e.number).replace(/^sips?:/, '').split('@')[0],
+			hit = crvGraph.resolveDialed(this.snap, number);
+		return { type: 'did', number: hit ? hit.number : number };
+	};
+
+	/** What a locked view shows, in words: the callflow's name or the number. */
+	View.prototype._lockedLabel = function() {
+		var e = this.locked.entry, list = this.snap.callflow_list || this.snap.callflows || {};
+		return e.type === 'callflow' ? ((list[e.id] || {}).name || (list[e.id] && (list[e.id].numbers || [])[0]) || e.id) : crvGraph.formatNumber(e.number);
+	};
+
 	View.prototype.destroy = function() {
 		this._stop();
+		this.loadToken++; // drop any load still in flight
 		this.canvas.destroy();
+		this.canvas = null;
 		this.$root.off().empty().removeClass('crv-app').removeAttr('id');
 	};
 

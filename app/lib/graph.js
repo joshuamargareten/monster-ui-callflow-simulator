@@ -15,13 +15,13 @@
  */
 (function(root, factory) {
 	if (typeof define === 'function' && define.amd) {
-		define(['./temporal'], factory);
+		define(['./temporal', './modules'], factory);
 	} else if (typeof module === 'object' && module.exports) {
-		module.exports = factory(require('./temporal'));
+		module.exports = factory(require('./temporal'), require('./modules'));
 	} else {
-		root.crvGraph = factory(root.crvTemporal);
+		root.crvGraph = factory(root.crvTemporal, root.crvModules);
 	}
-}(this, function(temporal) {
+}(this, function(temporal, catalog) {
 	'use strict';
 
 	var MAX_SIM_STEPS = 500;          // safety net only; Kazoo's own limit below ends loops first
@@ -44,93 +44,50 @@
 	 * (menu digits) does NOT fall back. After max_branch_count jumps (default 50) Kazoo
 	 * terminates the call — that is its loop protection.
 	 * ---------------------------------------------------------------------------------------- */
-	var MODULES = {
-		user:              { type: 'EXTENSION',      icon: 'user',            underscore: 'failure',  ref: 'users' },
-		device:            { type: 'DEVICE',         icon: 'phone',           underscore: 'failure',  ref: 'devices' },
-		ring_group:        { type: 'RING GROUP',     icon: 'ring_group',      underscore: 'failure' },
-		page_group:        { type: 'PAGE GROUP',     icon: 'ring_group',      underscore: 'failure' },
-		menu:              { type: 'AUTO-ATTENDANT', icon: 'menu1',           underscore: 'menu',     ref: 'menus' },
-		temporal_route:    { type: 'TIME OF DAY',    icon: 'temporal_route',  underscore: 'nomatch' },
-		voicemail:         { type: 'MAILBOX',        icon: 'voicemail',       underscore: 'continue', ref: 'vmboxes' },
-		callflow:          { type: 'CALLFLOW',       icon: 'callflow',        underscore: 'return',   ref: 'callflows' },
-		qubicle:           { type: 'QUEUE',          icon: 'support',         underscore: 'failure',  ref: 'qubicle_queues' },
-		acdc_member:       { type: 'QUEUE',          icon: 'support',         underscore: 'failure' },
-		conference:        { type: 'CONFERENCE',     icon: 'conference',      underscore: 'continue', ref: 'conferences' },
-		directory:         { type: 'DIRECTORY',      icon: 'book',            underscore: 'continue', ref: 'directories' },
-		play:              { type: 'ANNOUNCEMENT',   icon: 'play',            underscore: 'continue', ref: 'media' },
-		tts:               { type: 'ANNOUNCEMENT',   icon: 'chat_circle',     underscore: 'continue' },
-		faxbox:            { type: 'FAX',            icon: 'printer2',        underscore: 'continue', ref: 'faxboxes' },
-		receive_fax:       { type: 'FAX',            icon: 'sip',             underscore: 'continue' },
-		offnet:            { type: 'EXTERNAL',       icon: 'offnet',          underscore: 'failure' },
-		resources:         { type: 'EXTERNAL',       icon: 'resource',        underscore: 'failure' },
-		pivot:             { type: 'EXTERNAL LOGIC', icon: 'conference',      underscore: 'failure' },
-		check_cid:         { type: 'ROUTE BY ANI',   icon: 'rightarrow',      underscore: 'nomatch' },
-		branch_variable:   { type: 'BRANCH',         icon: 'rightarrow',      underscore: 'nomatch' },
-		prepend_cid:       { type: 'CALLER-ID',      icon: 'plus_circle',     underscore: 'continue' },
-		dynamic_cid:       { type: 'CALLER-ID',      icon: 'rightarrow',      underscore: 'continue' },
-		set_variables:     { type: 'ACTION',         icon: 'settings2',       underscore: 'continue' },
-		set_alert_info:    { type: 'ACTION',         icon: 'play',            underscore: 'continue' },
-		language:          { type: 'ACTION',         icon: 'earth',           underscore: 'continue' },
-		sleep:             { type: 'ACTION',         icon: 'dot_chat',        underscore: 'continue' },
-		record_call:       { type: 'ACTION',         icon: 'conference',      underscore: 'continue' },
-		manual_presence:   { type: 'ACTION',         icon: 'lightbulb_on',    underscore: 'continue' },
-		missed_call_alert: { type: 'ACTION',         icon: 'bell1',           underscore: 'continue' },
-		webhook:           { type: 'ACTION',         icon: 'to_cloud',        underscore: 'continue' },
-		collect_dtmf:      { type: 'ACTION',         icon: 'conference',      underscore: 'continue' },
-		response:          { type: 'ACTION',         icon: 'rightarrow',      underscore: 'terminal' },
-		disa:              { type: 'FEATURE',        icon: 'conference',      underscore: 'terminal' }
-	};
-	// Anything else (park, intercom, hotdesk, call_forward, move, qubicle_recipient, ...) is
-	// rendered generically as a FEATURE and assumed to continue with `_` if it has one.
-	var GENERIC = { type: 'FEATURE', icon: 'settings2', underscore: 'continue' };
-
-	function moduleInfo(name) { return MODULES[name] || GENERIC; }
+	// Every module's type, icon, colour and `_` meaning lives in modules.js (the catalogue).
+	function moduleInfo(name) { return catalog.info(name); }
 
 	/**
 	 * Material Symbols glyph per module — DT-Callflows' own `google_icon` values, so steps look
-	 * exactly like they do in the Callflows app. Keys are module or "module:action".
+	 * exactly like they do in the Callflows app. "module:action" overrides the catalogue's glyph.
 	 */
 	var GLYPHS = {
-		user: 'person', device: 'deskphone', ring_group: 'group', page_group: 'adaptive_audio_mic',
-		menu: 'dialpad', voicemail: 'voicemail', callflow: 'alt_route', qubicle: 'support_agent',
-		acdc_member: 'support_agent', conference: 'diversity_3', directory: 'folder_shared',
-		play: 'library_music', tts: 'text_to_speech', faxbox: 'fax', receive_fax: 'fax',
-		offnet: 'cell_tower', resources: 'cell_tower', pivot: 'cloud_upload', check_cid: 'call_split',
-		branch_variable: 'fork_right', prepend_cid: 'add_circle', 'prepend_cid:reset': 'change_circle',
-		dynamic_cid: 'playlist_add_check_circle', set_variables: 'manufacturing',
-		set_alert_info: 'notifications_active', language: 'language', sleep: 'pause',
-		record_call: 'volume_up', 'record_call:stop': 'volume_off', manual_presence: 'online_prediction',
-		missed_call_alert: 'call_missed', webhook: 'webhook', collect_dtmf: 'pin', response: 'reply',
-		disa: 'login', group_pickup: 'step_out', group_pickup_feature: 'step_out',
-		call_forward: 'phone_forwarded', 'call_forward:deactivate': 'phone_paused',
-		do_not_disturb: 'do_not_disturb_on', 'do_not_disturb:deactivate': 'do_not_disturb_off',
-		hotdesk: 'desk', park: 'local_parking', eavesdrop: 'hearing', intercom: 'campaign',
-		move: 'move_up', privacy: 'visibility_off', qubicle_recipient: 'support_agent',
-		ring_group_toggle: 'group_add', 'ring_group_toggle:logout': 'group_remove',
-		acdc_agent: 'login', 'acdc_agent:logout': 'logout',
-		temporal_route: 'schedule', 'temporal_route:enable': 'schedule',
-		'temporal_route:disable': 'history_toggle_off', 'temporal_route:reset': 'history'
+		'prepend_cid:reset': 'change_circle', 'record_call:stop': 'volume_off',
+		'call_forward:deactivate': 'phone_paused', 'do_not_disturb:deactivate': 'do_not_disturb_off',
+		'ring_group_toggle:logout': 'group_remove', 'acdc_agent:logout': 'logout', 'hotdesk:logout': 'logout',
+		'temporal_route:enable': 'schedule', 'temporal_route:disable': 'history_toggle_off', 'temporal_route:reset': 'history',
+		'voicemail:check': 'voicemail', 'park:retrieve': 'local_parking'
 	};
 	var DEVICE_GLYPHS = { cellphone: 'smartphone', smartphone: 'smartphone', mobile: 'smartphone', softphone: 'devices',
 		fax: 'fax', landline: 'home_work', sip_uri: 'sip', application: 'settop_component', meta: 'devices' };
 
 	function glyphFor(module, data, doc) {
 		if (module === 'device' && doc && DEVICE_GLYPHS[doc.device_type]) { return DEVICE_GLYPHS[doc.device_type]; }
-		return GLYPHS[module + ':' + (data && data.action)] || GLYPHS[module] || 'settings';
+		return GLYPHS[module + ':' + (data && data.action)] || moduleInfo(module).glyph || 'settings';
 	}
 
-	/**
-	 * Routing-only steps: things the caller never hears or sees, they only decide where the call
-	 * goes next (time of day, jumps, caller-ID tweaks...). Drawn as slim pills on the canvas.
-	 */
-	var LOGIC_MODULES = {
-		temporal_route: true, callflow: true, check_cid: true, branch_variable: true, prepend_cid: true,
-		dynamic_cid: true, set_variables: true, set_alert_info: true, language: true, sleep: true,
-		record_call: true, manual_presence: true, missed_call_alert: true, webhook: true
-	};
+	/** Routing-only steps (time of day, jumps, caller ID, variables...): drawn as slim pills. */
+	function isLogicModule(module) { return !!moduleInfo(module).logic; }
 
 	/** Modules that wait for the caller — a loop through one of these is the caller's choice. */
-	var INPUT_MODULES = { menu: true, collect_dtmf: true, directory: true, disa: true };
+	function isInputModule(module) { return !!moduleInfo(module).input; }
+
+	/**
+	 * What kind of step this is, for colour coding (one colour per family on the canvas):
+	 *   bridge   connects the caller to someone: users, devices, groups, queues, conferences...
+	 *   outside  leaves the account: carrier (offnet/resources), outside numbers, Pivot
+	 *   input    waits for the caller: menus, directory, DTMF collection, DISA
+	 *   media    plays something: announcements, text-to-speech
+	 *   mailbox  stores a message: voicemail, fax
+	 *   end      ends the call: hang up, SIP response, silence
+	 *   feature  changes a setting or does something else (feature codes, ...)
+	 *   logic    routing only: time of day, jumps, caller-ID... (the slim pills)
+	 */
+	function familyFor(module, data, role) {
+		if (role === 'logic') { return 'logic'; }
+		if (temporalControl(module, data) || (module === 'voicemail' && data && data.action === 'check')) { return 'feature'; }
+		return moduleInfo(module).family || 'feature';
+	}
 
 	// cf_temporal_route with action enable/disable/reset/menu doesn't route by time — it flips the
 	// rules' `enabled` flag (feature-code style) and then continues with `_`.
@@ -142,6 +99,14 @@
 	function effectiveInfo(module, data) {
 		return temporalControl(module, data) ? TEMPORAL_CONTROL_INFO : moduleInfo(module);
 	}
+
+	// cf_exe:maybe_start_cf_module — `skip_module: true` (kz_json:is_true) on any step: Kazoo
+	// doesn't run it and continues with its `_` child, exactly as for an unknown module.
+	function isSkipped(data) { return !!data && (data.skip_module === true || data.skip_module === 'true'); }
+
+	// How end_date is read (see temporal.endLsecOf). The app sets it from the whitelabel's
+	// DT-Callflows temporalRuleEndDateExclusive; Teklink's is exclusive.
+	function endDateMode(snap) { return get(snap, 'settings.endDate') || 'exclusive'; }
 
 	var UNDERSCORE_LABEL = {
 		'continue': 'Then',
@@ -212,6 +177,51 @@
 		if (!ids.length) { return null; }
 		return { online: ids.filter(function(d) { return status[d].registered; }).length, total: ids.length };
 	}
+
+	/**
+	 * A user's or device's call forwarding, as Kazoo applies it (kz_endpoint), or null:
+	 *   { number, mode: 'substitute' | 'parallel' | 'failover', directOnly, keypress, keepCallerId, viaDevice }
+	 * `call_forward.enabled` forwards every call — instead of the phones (substitute, Kazoo's
+	 * default) or as well as them. SmartPBX's "Failover" mode is `call_failover.enabled`: it only
+	 * forwards when none of the user's devices is registered. Cell phone and landline devices are
+	 * themselves a forward to their number.
+	 */
+	function forwardOf(doc) {
+		if (!doc) { return null; }
+		var cf = doc.call_forward || {}, fo = doc.call_failover || {}, src = null, mode = null;
+		if (cf.enabled === true && cf.number) { src = cf; mode = cf.substitute === false ? 'parallel' : 'substitute'; }
+		else if (fo.enabled === true && (fo.number || cf.number)) { src = $extend({}, cf, fo); src.number = fo.number || cf.number; mode = 'failover'; }
+		if (!src) { return null; }
+		return {
+			number: String(src.number).replace(/[^\d+*#]/g, '') || String(src.number), mode: mode,
+			directOnly: src.direct_calls_only === true, keypress: src.require_keypress === true, keepCallerId: src.keep_caller_id !== false,
+			viaDevice: !!(doc.device_type && /^(cellphone|landline)$/.test(doc.device_type))
+		};
+	}
+	function $extend(a) { for (var i = 1; i < arguments.length; i++) { for (var k in arguments[i]) { if (Object.prototype.hasOwnProperty.call(arguments[i], k)) { a[k] = arguments[i][k]; } } } return a; }
+
+	/** The ways Kazoo may match a dialled number to a callflow: as dialled, then E.164 / 10-digit forms. */
+	function dialVariants(num) {
+		var s = String(num || ''), digits = s.replace(/\D/g, ''), out = [s];
+		if (s.charAt(0) === '+') { out.push(digits); }
+		if (digits.length === 10) { out.push('+1' + digits, '1' + digits); }
+		if (digits.length === 11 && digits.charAt(0) === '1') { out.push('+' + digits, digits.slice(1)); }
+		return out.filter(function(v, i) { return v && out.indexOf(v) === i; });
+	}
+
+	/**
+	 * Where a forwarded call goes. Kazoo forwards through a loopback into the account's own
+	 * callflows, so an extension or one of the account's numbers routes there (another user, a
+	 * ring group, a main number...); anything else goes out to the carrier.
+	 * @returns { callflowId, number } | null (outside number)
+	 */
+	function resolveDialed(snap, number) {
+		var idx = numberIndex(snap), v = dialVariants(number);
+		for (var i = 0; i < v.length; i++) { if (idx[v[i]]) { return { callflowId: idx[v[i]], number: v[i] }; } }
+		return null;
+	}
+
+	var FORWARD_LABEL = { substitute: 'Forwards all calls', parallel: 'Also forwards to', failover: 'If phones offline' };
 
 	function userName(user) {
 		var name = ((user.first_name || '') + ' ' + (user.last_name || '')).trim() || user.username || 'User';
@@ -355,13 +365,21 @@
 			case 'pivot':
 				out.label = 'Pivot (external logic)';
 				out.sublabel = data && data.voice_url ? truncate(String(data.voice_url).replace(/^https?:\/\//, ''), 40) : null;
-				out.issues.push({ level: 'info', code: 'pivot', message: 'Routing is decided at call time by an external server — it cannot be shown in advance.' });
+				out.issues.push({ level: 'info', code: 'pivot', message: 'Routing is decided at call time by an external server — it isn\'t known in advance. "Test this pivot" asks the server what it would answer now.' });
 				break;
 			case 'prepend_cid':
 				out.label = data && data.action === 'reset' ? 'Reset caller ID prefix' : 'Prefix caller ID "' + truncate(data && (data.caller_id_name_prefix || data.caller_id_number_prefix), 24) + '"';
 				break;
 			default:
-				if (data && data.action) { out.sublabel = humanize(data.action); }
+				var cinfo = moduleInfo(module), cctx = catalogCtx(snap), cd = data || {};
+				if (cinfo.label) { out.label = cinfo.label(cd, cctx); }
+				out.sublabel = cinfo.sub ? cinfo.sub(cd, cctx) : (cd.action && !cinfo.label ? humanize(cd.action) : null);
+				if (!catalog.known(module)) {
+					out.issues.push({ level: 'info', code: 'unknown-module', message: 'Kazoo has no "' + module + '" module that this app knows — it may be custom or from a newer Kazoo. If Kazoo doesn\'t have it either, it skips the step and goes to what comes after it.' });
+				}
+				if (cinfo.service) {
+					out.issues.push({ level: 'info', code: 'needs-service', message: 'Needs ' + cinfo.service + ', a separate Kazoo service. Without it Kazoo skips this step.' });
+				}
 		}
 		return out;
 	}
@@ -392,16 +410,33 @@
 			if (key === 'max_retries') { return 'After max retries'; }
 			return 'Press ' + key;
 		}
-		if (key === '_') { return UNDERSCORE_LABEL[moduleInfo(module).underscore]; }
+		var info = moduleInfo(module);
+		if (key === '_') { return info.decision ? 'Otherwise' : UNDERSCORE_LABEL[info.underscore]; }
+		if (info.causes && catalog.isCause(key)) { return catalog.causeLabel(key); }
+		if (info.key) { return info.key(key, data || {}); }
 		return humanize(key);
+	}
+
+	/** Helpers the catalogue's label/rows functions get (see modules.js). */
+	function catalogCtx(snap) {
+		return {
+			name: function(col, id) {
+				var d = get(snap, col + '.' + id);
+				if (!d) { return id; }
+				return col === 'users' ? userName(d) : (d.name || id);
+			},
+			num: function(n) { return formatNumber(String(n)); },
+			cut: truncate
+		};
 	}
 
 	/* ---------------------------------------------------------------------------------------- *
 	 * Build
 	 * ---------------------------------------------------------------------------------------- */
 
-	function Builder(snap) {
+	function Builder(snap, opts) {
 		this.snap = snap;
+		this.opts = opts || {};
 		this.nodes = {};
 		this.edges = [];
 		this.edgeSeq = 0;
@@ -434,7 +469,7 @@
 		if (cf.flow && cf.flow.module) {
 			this.walk(cf.flow, cfId, '');
 		} else {
-			this.addNode({ id: rootId, kind: 'module', module: 'empty', type: 'CALLFLOW', icon: 'callflow', glyph: 'alt_route', role: 'logic',
+			this.addNode({ id: rootId, kind: 'module', module: 'empty', type: 'CALLFLOW', icon: 'callflow', glyph: 'alt_route', role: 'logic', family: 'logic',
 				label: 'Empty callflow', callflowId: cfId, path: '', data: {}, media: [],
 				issues: [{ level: 'warning', code: 'empty-callflow', message: 'This callflow has no steps.' }] });
 		}
@@ -452,15 +487,34 @@
 			children = flowNode.children || {},
 			keys = Object.keys(children);
 
-		var refDoc = d.ref ? get(self.snap, d.ref.collection + '.' + d.ref.id) : null;
+		var refDoc = d.ref ? get(self.snap, d.ref.collection + '.' + d.ref.id) : null,
+			role = isLogicModule(module) && !temporalControl(module, data) ? 'logic' : 'call',
+			fwd = (module === 'user' || module === 'device') ? forwardOf(refDoc) : null;
+		if (fwd) { d.sublabel = (d.sublabel ? d.sublabel + ' · ' : '') + (fwd.mode === 'failover' ? 'If offline → ' : 'Forwards to ') + formatNumber(fwd.number); }
+		var skipped = isSkipped(data);
+		if (skipped) {
+			d.sublabel = 'Skipped' + (d.sublabel ? ' · ' + d.sublabel : '');
+			d.issues.push({ level: 'info', code: 'skipped', message: 'Skip is on (skip_module): Kazoo doesn\'t run this step and goes straight to what comes after it.' });
+		}
 		var node = self.addNode({
 			id: id, kind: 'module', module: module, type: info.type, icon: info.icon,
 			glyph: glyphFor(module, data, refDoc),
-			role: LOGIC_MODULES[module] && !temporalControl(module, data) ? 'logic' : 'call',
+			role: role, family: familyFor(module, data, role),
 			label: d.label, sublabel: d.sublabel, callflowId: cfId, path: path,
-			data: data, ref: d.ref, media: d.media, issues: d.issues, presence: d.presence || null
+			data: data, ref: d.ref, media: d.media, issues: d.issues, presence: d.presence || null,
+			forward: fwd, skipped: skipped || undefined,
+			pivotReply: get(self.snap, 'callflows.' + cfId + '._virtual') ? true : undefined
 		});
 		self.path.push({ cfId: cfId, module: module });
+
+		if (fwd && !skipped) { self.addForward(node, fwd); }
+
+		// A pivot tested from the details panel: draw the server's reply after it.
+		var replyCf = module === 'pivot' && !skipped && self.opts.pivotReplies && self.opts.pivotReplies[id];
+		if (replyCf) {
+			var replyRoot = self.expandCallflow(replyCf);
+			if (replyRoot) { self.addEdge(id, replyRoot, { kind: 'pivot', key: null, label: 'Test reply' }); }
+		}
 
 		var jumpTargetExists = false;
 		if (module === 'callflow' && data.id) {
@@ -474,14 +528,15 @@
 				if (looping) {
 					var startAt = -1;
 					for (var i = 0; i < self.path.length; i++) { if (self.path[i].cfId === data.id) { startAt = i; break; } }
-					callerDriven = startAt !== -1 && self.path.slice(startAt).some(function(p) { return INPUT_MODULES[p.module]; });
+					callerDriven = startAt !== -1 && self.path.slice(startAt).some(function(p) { return isInputModule(p.module); });
 				}
 				self.addEdge(id, target, {
 					kind: looping ? 'loop' : 'jump', key: null,
-					label: looping ? (callerDriven ? 'Back to start' : 'Loops back') : 'Goes to',
-					callerDriven: looping ? callerDriven : undefined
+					label: skipped ? 'Skipped' : (looping ? (callerDriven ? 'Back to start' : 'Loops back') : 'Goes to'),
+					callerDriven: looping ? callerDriven : undefined,
+					inactive: skipped || undefined
 				});
-				if (looping && !callerDriven) {
+				if (looping && !callerDriven && !skipped) {
 					node.issues.push({ level: 'warning', code: 'loop', message: 'This jump loops back with no caller choice in between — Kazoo gives up after 50 jumps.' });
 				}
 			}
@@ -493,22 +548,53 @@
 		keys.forEach(function(key) {
 			var childPath = path === '' ? key : path + '/' + key,
 				childId = self.walk(children[key], cfId, childPath),
-				dead = key === '_' && (info.underscore === 'terminal' || menuUnderscoreDead),
-				kind = dead ? 'dead' : (key === '_' ? info.underscore : 'branch'),
+				// A skipped step goes to `_` whatever it is — even after voicemail or a menu.
+				dead = !skipped && key === '_' && (info.underscore === 'terminal' || menuUnderscoreDead),
+				kind = dead ? 'dead' : (key === '_' ? (skipped ? 'continue' : info.underscore) : (info.causes && catalog.isCause(key) ? 'failure' : 'branch')),
 				label = dead ? 'Never runs' : edgeLabel(module, key, data, self.snap);
 			if (module === 'callflow' && key === '_') {
 				label = jumpTargetExists ? 'When it finishes' : 'Target missing — continues';
 			}
-			var edge = self.addEdge(id, childId, { kind: kind, key: key, label: label });
+			if (skipped) { label = key === '_' ? 'Skipped — goes here' : label + ' (skipped)'; }
+			var edge = self.addEdge(id, childId, { kind: kind, key: key, label: label, inactive: (skipped && key !== '_') || undefined });
 			if (module === 'temporal_route' && key !== '_' && !temporalControl(module, data)) { edge.ruleId = key; }
 			if (dead) {
-				node.issues.push({ level: 'warning', code: 'dead-branch', message: 'The "' + key + '" branch can never be reached.' });
+				node.issues.push({ level: 'warning', code: 'dead-branch', message: info.causes
+					? 'Kazoo never goes to the next step after an outbound call: when it fails, Kazoo only takes a branch named after the failure (for example USER_BUSY or NO_ANSWER); otherwise the call ends.'
+					: (menuUnderscoreDead ? 'The "' + key + '" branch can never be reached.' : 'The "' + key + '" branch can never be reached — the call doesn\'t come back from this step.') });
 			}
 		});
 
 		if (module === 'temporal_route') { self.lintTemporal(node, data, keys, !!temporalControl(module, data)); }
 		self.path.pop();
 		return id;
+	};
+
+	/**
+	 * Draws a user's / device's call forward: an edge to the callflow the number routes to (an
+	 * extension, another user, one of the account's numbers) or to an outside-number step.
+	 */
+	Builder.prototype.addForward = function(node, fwd) {
+		var target = resolveDialed(this.snap, fwd.number),
+			label = fwd.viaDevice ? 'Rings' : FORWARD_LABEL[fwd.mode];
+		if (target) {
+			var looping = this.stack.indexOf(target.callflowId) !== -1,
+				root = this.expandCallflow(target.callflowId);
+			if (root) {
+				fwd.callflowId = target.callflowId;
+				this.addEdge(node.id, root, { kind: 'forward', key: null, label: label, forwardMode: fwd.mode, loops: looping || undefined });
+				if (looping) {
+					node.issues.push({ level: 'warning', code: 'forward-loop', message: 'Call forward to ' + fwd.number + ' routes back into the same callflow — the call loops until Kazoo gives up.' });
+				}
+				return;
+			}
+		}
+		var extId = 'ext:' + fwd.number;
+		this.addNode({ id: extId, kind: 'module', module: 'external', type: 'OUTSIDE NUMBER', icon: 'offnet', glyph: 'call_made',
+			role: 'call', family: 'outside', label: formatNumber(fwd.number), sublabel: 'Through the carrier',
+			number: fwd.number, data: { number: fwd.number }, media: [], issues: [] });
+		fwd.external = true;
+		this.addEdge(node.id, extId, { kind: 'forward', key: null, label: label, forwardMode: fwd.mode });
 	};
 
 	Builder.prototype.lintTemporal = function(node, data, keys, isControl) {
@@ -523,7 +609,7 @@
 				return;
 			}
 			if (doc) {
-				temporal.lintRule(doc, { timezone: tz }).forEach(function(issue) {
+				temporal.lintRule(doc, { timezone: tz, endDate: endDateMode(snap) }).forEach(function(issue) {
 					if (issue.level === 'info') { return; }
 					node.issues.push({ level: issue.level, code: 'rule-' + issue.code, message: (doc.name || id) + ': ' + issue.message });
 				});
@@ -544,7 +630,7 @@
 	Builder.prototype.addEntry = function(number, cfId, category) {
 		var entryId = 'num:' + number;
 		this.addNode({ id: entryId, kind: 'entry', module: null, type: category === 'did' ? 'DID' : category.toUpperCase(),
-			icon: category === 'did' ? 'phone' : 'callflow', glyph: cfId ? 'call' : 'phone_disabled', role: 'entry',
+			icon: category === 'did' ? 'phone' : 'callflow', glyph: cfId ? 'call' : 'phone_disabled', role: 'entry', family: 'entry',
 			label: category === 'did' ? formatNumber(number) : number,
 			number: number, category: category, callflowId: cfId || null, media: [], issues: [] });
 		if (cfId) {
@@ -600,7 +686,7 @@
 	 */
 	function build(snap, entry, opts) {
 		opts = opts || {};
-		var b = new Builder(snap), idx = numberIndex(snap), roots = [];
+		var b = new Builder(snap, opts), idx = numberIndex(snap), roots = [];
 		entry = entry || { type: 'account' };
 
 		if (entry.type === 'callflow') {
@@ -682,17 +768,12 @@
 	 * Simulate one call
 	 * ---------------------------------------------------------------------------------------- */
 
+	// Where the simulated call stops; the other modules' endings are in modules.js (`end`).
 	var TERMINAL_STOP = {
 		voicemail: 'Caller leaves a voicemail.',
-		conference: 'Caller joins the conference.',
-		directory: 'Caller searches the directory.',
-		faxbox: 'Fax is received.',
-		receive_fax: 'Fax is received.',
-		disa: 'Caller gets a dial tone (DISA).',
-		pivot: 'An external server decides what happens next.',
-		response: 'Kazoo sends a response and ends the call.'
+		pivot: 'An external server decides what happens next.'
 	};
-	var ANSWERABLE = { user: true, device: true, ring_group: true, page_group: true, qubicle: true, acdc_member: true, offnet: true, resources: true };
+	var ANSWERABLE = { user: true, device: true, ring_group: true, page_group: true, qubicle: true, acdc_member: true, offnet: true, resources: true, external: true };
 
 	/**
 	 * @param {Object} graph   from build()
@@ -704,9 +785,30 @@
 	 *   outcomes: { nodeId: 'answered' | 'no-answer' } per-step overrides,
 	 *   digits:   { menuNodeId: '1' | 'timeout' | 'invalid' } caller input per menu,
 	 *   force:    { ruleId: true|false } simulate rule enable/disable
+	 *   callerId: the caller's number, for caller-ID checks (check_cid); optional
 	 * }
+	 * Steps decided at call time (check_cid without callerId, branch_variable, fax_detect, ...) read
+	 * their branch from `digits` too; until one is chosen the call stops with 'awaiting-choice' and
+	 * end.choices = [{ key, label }].
 	 * @returns {Object} { steps: [{ nodeId, edgeId, label, detail }], end: { reason, nodeId, detail }, nodes, edges }
 	 */
+	/**
+	 * cf_check_cid with a known caller number: regex match -> "match" (or, in absolute mode, the
+	 * branch named after the number); no match -> "nomatch"; either missing -> `_`. Kazoo's
+	 * regexes are PCRE; JavaScript reads the usual ones the same way. null = can't tell.
+	 */
+	function cidBranch(node, callerId, live) {
+		if (node.module !== 'check_cid' || !callerId) { return null; }
+		var d = node.data || {}, matched;
+		try { matched = new RegExp(d.regex || '.*').test(String(callerId)); } catch (e) { return null; }
+		var has = function(k) { return live.some(function(e) { return e.key === k; }); };
+		if (matched) {
+			var want = d.use_absolute_mode === true || d.use_absolute_mode === 'true' ? String(callerId) : 'match';
+			return has(want) ? want : '_';
+		}
+		return has('nomatch') ? 'nomatch' : '_';
+	}
+
 	function simulate(graph, snap, sim) {
 		var out = {}, steps = [], visitedNodes = {}, visitedEdges = {}, cur = sim.start, guard = 0,
 			stack = [],      // pending "return" edges pushed by callflow jumps (cf_exe flows)
@@ -717,8 +819,10 @@
 		var edgeByKey = function(id, key) { return (out[id] || []).filter(function(e) { return e.key === key && e.kind !== 'dead'; })[0] || null; };
 		var edgeOfKind = function(id, kind) { return (out[id] || []).filter(function(e) { return e.kind === kind; })[0] || null; };
 
-		function finish(reason, nodeId, detail) {
-			return { steps: steps, end: { reason: reason, nodeId: nodeId, detail: detail }, nodes: Object.keys(visitedNodes), edges: Object.keys(visitedEdges) };
+		function finish(reason, nodeId, detail, extra) {
+			var end = { reason: reason, nodeId: nodeId, detail: detail };
+			for (var k in extra || {}) { if (Object.prototype.hasOwnProperty.call(extra, k)) { end[k] = extra[k]; } }
+			return { steps: steps, end: end, nodes: Object.keys(visitedNodes), edges: Object.keys(visitedEdges) };
 		}
 
 		while (cur) {
@@ -735,6 +839,11 @@
 				next = edgeOfKind(cur, 'entry');
 				if (!next) { return finish('unassigned', cur, 'This number is not routed anywhere.'); }
 				step.detail = 'Destination';
+			} else if (node.skipped) {
+				step.detail = 'Skipped (skip is on) — Kazoo goes straight to what comes after it';
+				step.skipped = true;
+				next = edgeByKey(cur, '_');
+				if (!next) { noNext = 'Skipped, and nothing comes after it.'; }
 			} else if (temporalControl(node.module, node.data)) {
 				step.detail = TEMPORAL_CONTROL[node.data.action] + ' (' + ((node.data.rules || []).length) + ' rules) — changes the rules, not this call\'s route';
 				next = edgeByKey(cur, '_');
@@ -743,7 +852,7 @@
 				var keys = (out[cur] || []).filter(function(e) { return e.kind !== 'dead'; }).map(function(e) { return e.key; }).filter(function(k) { return k !== null; });
 				var res = temporal.evaluateRoute({
 					node: node.data, childKeys: keys, ruleDocs: snap.temporal_rules || {}, ruleSets: snap.temporal_rules_sets || {},
-					accountTimezone: graph.timezone, at: sim.at, force: sim.force
+					accountTimezone: graph.timezone, at: sim.at, force: sim.force, endDate: endDateMode(snap)
 				});
 				step.temporal = res;
 				if (res.kazooError) {
@@ -777,6 +886,20 @@
 					}
 				}
 				if (!next) { noNext = step.detail + ' — nothing configured, so Kazoo says goodbye.'; }
+			} else if (moduleInfo(node.module).decision) {
+				// Decided at call time by something we can't see: the caller's number (unless given),
+				// a variable, fax tones, a spam score... cf_exe:continue/attempt, then `_`.
+				var live = (out[cur] || []).filter(function(e) { return e.kind !== 'dead' && e.key !== null; }),
+					pick = (sim.digits && sim.digits[cur]) || cidBranch(node, sim.callerId, live);
+				if (!pick) {
+					return finish('awaiting-choice', cur, 'Kazoo decides this when the call comes in — pick which way it goes.', {
+						choices: live.map(function(e) { return { key: e.key, label: e.label || e.key }; })
+					});
+				}
+				next = edgeByKey(cur, pick);
+				step.detail = next ? next.label || pick : pick;
+				if (!next && pick !== '_') { next = edgeByKey(cur, '_'); if (next) { step.detail += ' — no branch for it, so "Otherwise"'; } }
+				if (!next) { noNext = step.detail + ' — and nothing configured for it.'; }
 			} else if (node.module === 'callflow') {
 				var jump = edgeOfKind(cur, 'jump') || edgeOfKind(cur, 'loop');
 				if (jump) {
@@ -792,7 +915,7 @@
 					step.detail = 'Target callflow is missing';
 					if (!next) { noNext = 'Target callflow is missing and there is nothing after it.'; }
 				}
-			} else if (ANSWERABLE[node.module]) {
+			} else if (ANSWERABLE[node.module] || moduleInfo(node.module).answer) {
 				var missing = (node.issues || []).some(function(i) { return i.code === 'missing-ref'; }),
 					outcome = missing ? 'no-answer' : ((sim.outcomes && sim.outcomes[cur]) || sim.outcome || 'answered');
 				if (missing) { step.missing = true; }
@@ -801,15 +924,42 @@
 					outcome = node.presence && node.presence.online === 0 ? 'no-answer' : 'answered';
 					if (outcome === 'no-answer') { step.offline = true; }
 				}
-				if (outcome === 'answered') {
-					return finish('answered', cur, (node.module === 'offnet' || node.module === 'resources' ? 'Call goes out to the carrier.' : 'Answered by ' + node.label + '.'));
+				// Call forward: all calls (substitute), when nobody picks up the phones it rings
+				// alongside (parallel), or only when no phone is registered (failover).
+				var fwdEdge = missing ? null : edgeOfKind(cur, 'forward'), fwd = node.forward;
+				if (fwdEdge && fwd && (fwd.mode === 'substitute' || (fwd.mode === 'parallel' && outcome !== 'answered') || (fwd.mode === 'failover' && step.offline))) {
+					step.detail = (fwd.viaDevice ? 'Rings ' : 'Forwarded to ') + formatNumber(fwd.number) +
+						(fwd.mode === 'failover' ? ' — no phone registered' : (fwd.mode === 'parallel' ? ' — rang their phones too' : ''));
+					step.forwarded = true;
+					// If the forwarded call isn't answered, Kazoo carries on after this step.
+					var after = edgeByKey(cur, '_');
+					if (after) { stack.push(after); }
+					next = fwdEdge;
+				} else if (outcome === 'answered') {
+					return finish('answered', cur, node.module === 'offnet' || node.module === 'resources' ? 'Call goes out to the carrier.'
+						: (node.module === 'external' ? 'Answered at ' + node.label + ' (outside number).' : 'Answered by ' + node.label + '.'));
 				}
-				next = edgeByKey(cur, '_');
-				step.detail = missing ? 'Points at something that no longer exists — Kazoo can\'t ring it'
-					: (step.offline ? 'No device registered right now' : 'No answer');
-				if (!next) { noNext = step.detail + ', and nothing configured after it.'; }
-			} else if (TERMINAL_STOP[node.module]) {
-				return finish('terminal', cur, TERMINAL_STOP[node.module]);
+				if (!next) {
+					// cf_util:handle_bridge_failure: a branch named after the failure cause first.
+					var causeEdge = moduleInfo(node.module).causes && !missing ? edgeByKey(cur, 'NO_ANSWER') : null;
+					next = causeEdge || edgeByKey(cur, '_');
+					step.detail = missing ? 'Points at something that no longer exists — Kazoo can\'t ring it'
+						: (step.offline ? 'No device registered right now' : 'No answer');
+					if (causeEdge) { step.detail += ' — takes the "' + causeEdge.label + '" branch'; }
+					if (!next) {
+						noNext = moduleInfo(node.module).underscore === 'terminal'
+							? step.detail + '. After a failed outbound call Kazoo only continues on a branch named after the failure, and there is none'
+							: step.detail + ', and nothing configured after it';
+						noNext += '.';
+					}
+				}
+			} else if (node.module === 'pivot' && edgeOfKind(cur, 'pivot')) {
+				// A reply from "Test this pivot". cf_exe:continue_with_flow replaces this callflow's
+				// remaining steps with it, but keeps pending jump returns (the flow stack).
+				step.detail = 'The server\'s test reply takes over from here';
+				next = edgeOfKind(cur, 'pivot');
+			} else if (TERMINAL_STOP[node.module] || moduleInfo(node.module).end) {
+				return finish('terminal', cur, TERMINAL_STOP[node.module] || moduleInfo(node.module).end(node.data || {}, catalogCtx(snap)));
 			} else {
 				next = edgeByKey(cur, '_');
 				if (!next) { noNext = 'Nothing after this step.'; }
@@ -841,6 +991,9 @@
 		defaultVmGreeting: defaultVmGreeting,
 		numberKind: numberKind,
 		formatNumber: formatNumber,
-		MODULES: MODULES
+		forwardOf: forwardOf,
+		resolveDialed: resolveDialed,
+		familyFor: familyFor,
+		MODULES: catalog
 	};
 }));

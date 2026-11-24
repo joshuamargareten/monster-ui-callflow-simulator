@@ -1,0 +1,9 @@
+{
+ "module": "tts",
+ "data": { "text": "Thanks for calling support. Connecting you now." },
+ "children": {
+  "_": { "module": "ring_group", "data": { "endpoints": [ { "id": "u_alice", "endpoint_type": "user" }, { "id": "u_bob", "endpoint_type": "user" } ], "timeout": 20 }, "children": {
+   "_": { "module": "voicemail", "data": { "id": "vm_main", "action": "compose" }, "children": {} }
+  } }
+ }
+}

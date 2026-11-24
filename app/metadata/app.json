@@ -1,36 +1,39 @@
 {
-	"name": "call-route-visualizer",
+	"name": "callflow-simulator",
 	"api_url": "http://kazoo.example.com:8000/v2/",
 	"i18n": {
 		"en-US": {
-			"label": "Call Routing Visualizer",
-			"description": "See and simulate where every call to an account goes.",
-			"extended_description": "Pick a number, a callflow or the whole account and see its routing as a live map — time-of-day rules, menus, queues, voicemail and callflow jumps. Simulate any call at any date and time, press menu keys, play every greeting, and spot broken configuration such as deleted references and rules Kazoo cannot evaluate.",
+			"label": "Callflow Simulator",
+			"description": "Test any call against an account's callflows and follow the path it takes.",
+			"extended_description": "Choose a phone number, a callflow or the entire account to get an interactive diagram of how Kazoo handles its calls: time-of-day rules, IVR menus, ring groups, queues, call forwarding, voicemail and jumps between callflows. Run a test call for any date and time, choose menu keys, listen to greetings and hold music, and catch misconfigurations (deleted references, steps that can never run, rules Kazoo cannot evaluate) before your customers run into them.",
 			"features": [
-				"Routing map by number, callflow or whole account",
-				"Call simulation at any date and time, using Kazoo's own time-of-day logic",
-				"Menus drawn as a phone keypad — press keys to follow the call",
-				"Play every greeting, hold music and Kazoo's default voicemail greeting",
-				"Live registration status and readable details for every step",
-				"Finds broken or dead configuration; PDF export to share without a login"
+				"Interactive diagram for a number, a callflow or the entire account",
+				"Test calls for any date and time, using Kazoo's own time-of-day logic",
+				"IVR menus shown as a keypad: choose keys to follow the call",
+				"Listen to greetings, hold music and Kazoo's built-in voicemail prompt",
+				"Phone registration status and plain-language settings for every step",
+				"Flags misconfigurations; PDF export for people without a login"
 			]
 		}
 	},
-	"tags": ["reseller", "admin"],
-	"icon": "call-route-visualizer.png",
+	"tags": [
+		"reseller",
+		"admin"
+	],
+	"icon": "callflow-simulator.png",
 	"author": "Teklink",
 	"version": "1.0.0",
 	"license": "MIT",
 	"price": 0,
 	"screenshots": [
-		"call-route-visualizer_1.png",
-		"call-route-visualizer_2.png",
-		"call-route-visualizer_3.png",
-		"call-route-visualizer_4.png"
+		"callflow-simulator_1.png",
+		"callflow-simulator_2.png",
+		"callflow-simulator_3.png",
+		"callflow-simulator_4.png"
 	],
 	"urls": {
-		"documentation": "https://github.com/joshuamargareten/monster-ui-call-route-visualizer#readme",
-		"howto": "https://github.com/joshuamargareten/monster-ui-call-route-visualizer#install"
+		"documentation": "https://github.com/joshuamargareten/monster-ui-callflow-simulator#readme",
+		"howto": "https://github.com/joshuamargareten/monster-ui-callflow-simulator#install"
 	},
 	"masqueradable": true,
 	"pvt_type": "app"

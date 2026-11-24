@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Packs app/ as a ready-to-install folder named after the app, so nobody has to rename
-# "monster-ui-call-route-visualizer-main/app" by hand (Monster loads apps/<name>/app.js).
+# "monster-ui-callflow-simulator-main/app" by hand (Monster loads apps/<name>/app.js).
 #
 #   tools/make-release.sh [git-ref]      default ref: HEAD (committed files only)
 #
-# Writes dist/call-route-visualizer.zip and dist/call-route-visualizer.tar.gz, each holding a
-# single call-route-visualizer/ folder (app.js, metadata/, ...). Attach both to a GitHub release:
-#   gh release create v<version> dist/call-route-visualizer.zip dist/call-route-visualizer.tar.gz
+# Writes dist/callflow-simulator.zip and dist/callflow-simulator.tar.gz, each holding a
+# single callflow-simulator/ folder (app.js, metadata/, ...). Attach both to a GitHub release:
+#   gh release create v<version> dist/callflow-simulator.zip dist/callflow-simulator.tar.gz
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-NAME=call-route-visualizer
+NAME=callflow-simulator
 REF=${1:-HEAD}
 VERSION=$(git show "$REF:app/VERSION" | tr -d '[:space:]')
 META_VERSION=$(git show "$REF:app/metadata/app.json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).version))')

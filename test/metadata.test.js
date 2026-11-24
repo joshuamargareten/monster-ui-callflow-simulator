@@ -13,7 +13,7 @@ var fs = require('fs');
 var path = require('path');
 
 var APP = path.join(__dirname, '..', 'app');
-var NAME = 'call-route-visualizer';
+var NAME = 'callflow-simulator';
 var meta = JSON.parse(fs.readFileSync(path.join(APP, 'metadata', 'app.json'), 'utf8'));
 var appJs = fs.readFileSync(path.join(APP, 'app.js'), 'utf8');
 
@@ -73,7 +73,7 @@ test('every app.css selector is scoped to the app', function() {
 	css.replace(/([^{}]+)\{/g, function(_, sel) {
 		sel.split(',').map(function(s) { return s.trim(); }).filter(Boolean).forEach(function(s) {
 			if (/^(@|from$|to$|\d+%$)/.test(s)) { return; }
-			if (!/crv-|call-route-visualizer/.test(s)) { bad.push(s); }
+			if (!/crv-|callflow-simulator/.test(s)) { bad.push(s); }
 		});
 	});
 	assert.deepEqual(bad, []);

@@ -27,7 +27,7 @@
 	var GUTTER = 52; // width of the zoom-button column on the map's left edge
 	var KEYPAD = [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['*', '0', '#']];
 	var KEYPAD_SET = { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 8: 1, 9: 1, '*': 1, 0: 1, '#': 1 };
-	var EDGE_KINDS = ['entry', 'branch', 'continue', 'failure', 'nomatch', 'menu', 'jump', 'loop', 'return', 'dead'];
+	var EDGE_KINDS = ['entry', 'branch', 'continue', 'failure', 'nomatch', 'menu', 'jump', 'loop', 'return', 'dead', 'forward', 'pivot'];
 
 	function esc(s) {
 		return String(s === null || s === undefined ? '' : s)
@@ -154,9 +154,11 @@
 		var self = this, t = function(k, d) { return esc(self.i18n[k] || d); };
 		var errors = (n.issues || []).filter(function(i) { return i.level === 'error'; }).length,
 			warnings = (n.issues || []).filter(function(i) { return i.level === 'warning'; }).length,
-			cls = ['crv-node', 'crv-role--' + (n.role || 'call'), 'crv-node--' + (n.kind === 'entry' ? 'entry' : String(n.module || 'x').replace(/[^a-z0-9_-]/gi, ''))];
+			cls = ['crv-node', 'crv-role--' + (n.role || 'call'), 'crv-fam--' + (n.family || (n.kind === 'entry' ? 'entry' : 'feature')), 'crv-node--' + (n.kind === 'entry' ? 'entry' : String(n.module || 'x').replace(/[^a-z0-9_-]/gi, ''))];
 		if (errors) { cls.push('has-error'); } else if (warnings) { cls.push('has-warning'); }
 		if (n.kind === 'entry' && !n.callflowId) { cls.push('is-unassigned'); }
+		if (n.skipped) { cls.push('is-skipped'); }
+		if (n.pivotReply) { cls.push('is-pivot-reply'); }
 
 		var icon = '<span class="crv-glyph" aria-hidden="true">' + esc(n.glyph || 'settings') + '</span>' +
 			'<span class="crv-sprite icon white ' + esc(n.icon || 'settings2') + '" aria-hidden="true"></span>';
@@ -252,7 +254,7 @@
 			var le = g.edge(e.from, e.to, e.id);
 			if (!le) { return; }
 			var grp = document.createElementNS(svgNs, 'g');
-			grp.setAttribute('class', 'crv-edge crv-edge--' + e.kind + (e.callerDriven ? ' is-caller-loop' : ''));
+			grp.setAttribute('class', 'crv-edge crv-edge--' + e.kind + (e.callerDriven ? ' is-caller-loop' : '') + (e.loops ? ' is-loop' : '') + (e.inactive ? ' is-inactive' : ''));
 			grp.setAttribute('data-id', e.id);
 			var path = document.createElementNS(svgNs, 'path');
 			path.setAttribute('d', pathThrough(le.points));

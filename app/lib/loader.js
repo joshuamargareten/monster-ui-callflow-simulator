@@ -1,5 +1,5 @@
 /**
- * loader.js — fetch-on-demand for the visualizer.
+ * loader.js — fetch-on-demand for the simulator.
  *
  * Start-up only needs the callflow list, the numbers and the account. When the user opens
  * something, `ensure(entry)` fetches exactly the docs that graph needs: the callflows it reaches
@@ -33,8 +33,11 @@
 	var MODULE_REFS = {
 		callflow: 'callflows', user: 'users', device: 'devices', menu: 'menus', voicemail: 'vmboxes',
 		play: 'media', qubicle: 'qubicle_queues', conference: 'conferences', directory: 'directories',
-		faxbox: 'faxboxes'
+		faxbox: 'faxboxes', group: 'groups'
 	};
+	// Fields other modules point at docs with (receive_fax owner, pickup / eavesdrop targets,
+	// ring_group_toggle's callflow...) — see modules.js.
+	var FIELD_REFS = { owner_id: 'users', user_id: 'users', device_id: 'devices', group_id: 'groups', callflow_id: 'callflows' };
 	var ENDPOINT_KINDS = { user: 'users', device: 'devices', group: 'groups' };
 
 	function get(obj, path) {
@@ -51,14 +54,17 @@
 		this.inflight = {};  // "kind:id" -> [callbacks]
 	}
 
+	/** A full doc is cached. List summaries (start-up's device list) are marked `_summary`. */
+	function cached(snap, kind, id) { var d = snap[kind] && snap[kind][id]; return d && !d._summary ? d : null; }
+
 	Loader.prototype.has = function(kind, id) {
-		return !!(this.snap[kind] && this.snap[kind][id]) || !!this.missing[kind + ':' + id];
+		return !!cached(this.snap, kind, id) || !!this.missing[kind + ':' + id];
 	};
 
 	/** Fetches one doc (deduplicated, cached). cb(doc|null). */
 	Loader.prototype.fetchOne = function(kind, id, cb) {
 		var self = this, key = kind + ':' + id;
-		if (self.snap[kind] && self.snap[kind][id]) { return cb(self.snap[kind][id]); }
+		if (cached(self.snap, kind, id)) { return cb(self.snap[kind][id]); }
 		if (self.missing[key]) { return cb(null); }
 		if (self.inflight[key]) { self.inflight[key].push(cb); return; }
 		self.inflight[key] = [cb];
@@ -66,6 +72,8 @@
 			if (doc) {
 				self.snap[kind] = self.snap[kind] || {};
 				self.snap[kind][id] = doc;
+			} else if (self.snap[kind] && self.snap[kind][id] && self.snap[kind][id]._summary) {
+				doc = self.snap[kind][id]; // keep the summary rather than lose the device
 			} else {
 				self.missing[key] = true;
 			}
@@ -83,6 +91,7 @@
 		if (!flow || !flow.module) { return out; }
 		var data = flow.data || {}, kind = MODULE_REFS[flow.module];
 		if (kind && data.id) { out.push({ kind: kind, id: data.id }); }
+		Object.keys(FIELD_REFS).forEach(function(f) { if (typeof data[f] === 'string' && data[f]) { out.push({ kind: FIELD_REFS[f], id: data[f] }); } });
 		if (flow.module === 'ring_group' || flow.module === 'page_group') {
 			pushMedia(out, data.ringback);
 			(data.endpoints || []).forEach(function(ep) {
@@ -100,8 +109,27 @@
 		return out;
 	}
 
+	/**
+	 * The callflow a user's / device's call forward routes to (Kazoo forwards through the
+	 * account's own callflows) — same matching as graph.js resolveDialed.
+	 */
+	function forwardCallflow(snap, doc) {
+		if (!snap || !doc) { return null; }
+		var cf = doc.call_forward || {}, fo = doc.call_failover || {},
+			num = cf.enabled === true ? cf.number : (fo.enabled === true ? (fo.number || cf.number) : null);
+		if (!num) { return null; }
+		var s = String(num).replace(/[^\d+*#]/g, ''), digits = s.replace(/\D/g, ''), v = [s, digits];
+		if (digits.length === 10) { v.push('+1' + digits, '1' + digits); }
+		if (digits.length === 11 && digits.charAt(0) === '1') { v.push('+' + digits, digits.slice(1)); }
+		var list = snap.callflow_list || snap.callflows || {}, ids = Object.keys(list);
+		for (var i = 0; i < v.length; i++) {
+			for (var j = 0; j < ids.length; j++) { if ((list[ids[j]].numbers || []).indexOf(v[i]) !== -1) { return ids[j]; } }
+		}
+		return null;
+	}
+
 	/** References a fetched doc leads to (greetings, hold music, queue members, set members...). */
-	function refsOfDoc(kind, doc) {
+	function refsOfDoc(kind, doc, snap) {
 		var out = [];
 		if (!doc) { return out; }
 		switch (kind) {
@@ -110,7 +138,11 @@
 				if (get(doc, 'media.greeting')) { out.push({ kind: 'media', id: doc.media.greeting }); }
 				['exit_media', 'invalid_media', 'transfer_media'].forEach(function(k) { pushMedia(out, get(doc, 'media.' + k)); });
 				break;
-			case 'users': pushMedia(out, get(doc, 'music_on_hold.media_id')); break;
+			case 'users':
+				pushMedia(out, get(doc, 'music_on_hold.media_id'));
+				var ufw = forwardCallflow(snap, doc);
+				if (ufw) { out.push({ kind: 'callflows', id: ufw }); }
+				break;
 			case 'vmboxes':
 				if (get(doc, 'media.unavailable')) { out.push({ kind: 'media', id: doc.media.unavailable }); }
 				pushMedia(out, get(doc, 'media.temporary_unavailable'));
@@ -126,6 +158,8 @@
 			case 'devices':
 				if (doc.owner_id) { out.push({ kind: 'users', id: doc.owner_id }); }
 				pushMedia(out, get(doc, 'music_on_hold.media_id'));
+				var dfw = forwardCallflow(snap, doc);
+				if (dfw) { out.push({ kind: 'callflows', id: dfw }); }
 				break;
 			case 'groups':
 				Object.keys(doc.endpoints || {}).forEach(function(id) {
@@ -158,7 +192,7 @@
 		}
 
 		function settle(kind, doc) {
-			refsOfDoc(kind, doc).forEach(function(r) { queue.push(r); });
+			refsOfDoc(kind, doc, self.snap).forEach(function(r) { queue.push(r); });
 			fetched++;
 			active--;
 			pump();

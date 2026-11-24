@@ -20,7 +20,9 @@ test('rule summaries read like plain language', function() {
 	assert.equal(D.ruleSummary(SNAP.temporal_rules.r_open), 'Mon–Fri · 9:00 AM – 5:00 PM');
 	assert.equal(D.ruleSummary(SNAP.temporal_rules.r_xmas), 'Every December 25 · all day');
 	assert.equal(D.ruleSummary(rule('Night test')), 'Every day · 1:15 PM – 11:55 PM');      // all 7 incl. "wensday"
-	assert.equal(D.ruleSummary(rule('Holiday 2026')), 'Sep 11, 2026 · all day');
+	assert.equal(D.ruleSummary(rule('Holiday 2026'), { timezone: 'America/New_York' }), 'Sep 11, 2026 · all day');
+	assert.equal(D.ruleSummary({ cycle: 'weekly', wdays: ['monday'], time_window_start: 0, time_window_stop: 86400, start_date: 63943358400, end_date: 63944568000 }, { timezone: 'America/New_York' }), 'Mon · all day · until Apr 27, 2026');
+	assert.equal(D.ruleSummary({ cycle: 'daily', enabled: true, dimension: { rule_type: 'manual', feature_code_id: 3 } }), 'Manual switch · ON');
 	assert.match(D.ruleSummary(rule('Forced-on test')), /^Forced ON .*First Sun of January/);
 	assert.match(D.ruleSummary(rule('Forced-off test')), /^Forced OFF/);
 	assert.equal(D.ruleSummary({ cycle: 'weekly', wdays: ['monday', 'wednesday', 'friday'], time_window_start: 0, time_window_stop: 86400 }), 'Mon, Wed, Fri · all day');
@@ -90,8 +92,13 @@ test('numbers and unknown modules still get readable rows', function() {
 	assert.equal(value(rows(D.forNode(node('num:+18455550100'), SNAP, graph), 'Number'), 'Routed to'), 'Main Line');
 	var park = G.build(SNAP, { type: 'callflow', id: 'cf_park' });
 	var d = D.forNode(park.nodes['cf:cf_park:'], SNAP, park);
-	assert.equal(d.sections[0].rows[0].label, 'Action');
-	assert.equal(d.sections[0].rows[0].value, 'park');
+	assert.equal(d.sections[0].rows[0].label, 'Does');
+	assert.equal(d.sections[0].rows[0].value, 'Park');
+	// A module this app has never heard of: every setting, as rows.
+	var g2 = G.build({ account: {}, callflows: { x: { numbers: ['9'], flow: { module: 'dimensions_tag', data: { tag: 'VIP', color: 'red' }, children: {} } } } }, { type: 'callflow', id: 'x' });
+	var u = D.forNode(g2.nodes['cf:x:'], {}, g2).sections[0].rows;
+	assert.equal(u[0].value, 'dimensions_tag (not one this app knows)');
+	assert.equal(value(u, 'Tag'), 'VIP');
 });
 
 test('a box without its own greeting plays Kazoo’s default prompts', function() {

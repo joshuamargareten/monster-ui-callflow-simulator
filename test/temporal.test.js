@@ -378,7 +378,8 @@ test('lint flags the things worth showing on the canvas', function() {
 	assert.ok(codes({ cycle: 'weekly', wdays: ['fryday'] }).indexOf('unknown-weekday') !== -1);
 	assert.ok(codes({ cycle: 'weekly', wdays: [] }).indexOf('weekly-all-days') !== -1);
 	assert.ok(codes({ cycle: 'monthly', wdays: ['monday', 'friday'] }).indexOf('ordinal-needs-one-weekday') !== -1);
-	assert.ok(codes({ cycle: 'weekly', wdays: ['monday'], end_date: gsec(2020, 1, 1) }).indexOf('end-date-ignored') !== -1);
+	assert.ok(codes({ cycle: 'weekly', wdays: ['monday'], start_date: gsec(2019, 1, 1), end_date: gsec(2020, 1, 1) }).indexOf('ended') !== -1);
+	assert.ok(codes({ cycle: 'weekly', wdays: ['monday'], start_date: gsec(2020, 1, 1), end_date: gsec(2019, 1, 1) }).indexOf('end-before-start') !== -1);
 	assert.deepEqual(codes({ cycle: 'weekly', wdays: ['monday'], time_window_start: 0, time_window_stop: 3600 }), []);
 });
 

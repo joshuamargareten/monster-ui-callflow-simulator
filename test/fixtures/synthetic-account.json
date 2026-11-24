@@ -66,6 +66,34 @@
    "start_date": 63745056000,
    "time_window_start": 32400,
    "time_window_stop": 61200
+  },
+  "r_night": {
+   "name": "Night mode",
+   "cycle": "daily",
+   "start_date": 63934462800,
+   "enabled": false,
+   "dimension": {
+    "rule_type": "manual",
+    "feature_code_id": 7,
+    "tts_on": "Night mode is now enabled.",
+    "tts_off": "Night mode is now disabled."
+   }
+  },
+  "r_winter": {
+   "name": "Winter hours",
+   "cycle": "weekly",
+   "interval": 1,
+   "wdays": [
+    "monday",
+    "tuesday",
+    "wensday",
+    "thursday",
+    "friday"
+   ],
+   "start_date": 63963320400,
+   "end_date": 63965998800,
+   "time_window_start": 28800,
+   "time_window_stop": 57600
   }
  },
  "temporal_rules_sets": {
@@ -88,19 +116,45 @@
    "first_name": "Bob",
    "last_name": "Brown",
    "presence_id": "102",
-   "username": "bob"
+   "username": "bob",
+   "call_failover": {
+    "enabled": true,
+    "number": "103"
+   },
+   "call_forward": {
+    "enabled": false,
+    "number": "103"
+   }
   },
   "u_carol": {
    "first_name": "Carol",
    "last_name": "Chen",
    "presence_id": "103",
-   "username": "carol"
+   "username": "carol",
+   "call_forward": {
+    "enabled": true,
+    "number": "9145550177",
+    "substitute": true,
+    "keep_caller_id": true,
+    "require_keypress": false,
+    "direct_calls_only": false
+   }
   }
  },
  "devices": {
   "d_lobby": {
    "name": "Lobby phone",
    "device_type": "sip_device"
+  },
+  "d_cell": {
+   "name": "Alice cell",
+   "device_type": "cellphone",
+   "owner_id": "u_alice",
+   "call_forward": {
+    "enabled": true,
+    "number": "+19145550188",
+    "substitute": true
+   }
   }
  },
  "vmboxes": {
@@ -573,6 +627,213 @@
       "module": "play",
       "data": {
        "id": "m_closed"
+      }
+     }
+    }
+   }
+  },
+  "cf_ext_carol": {
+   "name": "Carol direct",
+   "numbers": [
+    "103"
+   ],
+   "flow": {
+    "module": "user",
+    "data": {
+     "id": "u_carol",
+     "timeout": 20,
+     "can_call_self": false
+    },
+    "children": {
+     "_": {
+      "module": "voicemail",
+      "data": {
+       "id": "vm_main",
+       "action": "compose"
+      },
+      "children": {}
+     }
+    }
+   }
+  },
+  "cf_cell": {
+   "name": "Alice mobile",
+   "numbers": [
+    "+18455550177"
+   ],
+   "flow": {
+    "module": "device",
+    "data": {
+     "id": "d_cell",
+     "timeout": 25
+    },
+    "children": {}
+   }
+  },
+  "cf_support": {
+   "name": "Support line",
+   "numbers": [
+    "+18455550190"
+   ],
+   "flow": {
+    "module": "temporal_route",
+    "data": {
+     "rules": [
+      "r_night",
+      "r_winter"
+     ]
+    },
+    "children": {
+     "r_night": {
+      "module": "play",
+      "data": {
+       "id": "m_closed"
+      },
+      "children": {}
+     },
+     "r_winter": {
+      "module": "pivot",
+      "data": {
+       "voice_url": "https://pivot.example.com/kazoo/route",
+       "method": "get",
+       "req_format": "kazoo",
+       "req_timeout_ms": 5000
+      },
+      "children": {
+       "_": {
+        "module": "user",
+        "data": {
+         "id": "u_alice",
+         "timeout": 20
+        },
+        "children": {}
+       }
+      }
+     },
+     "_": {
+      "module": "user",
+      "data": {
+       "id": "u_bob",
+       "timeout": 20,
+       "skip_module": true
+      },
+      "children": {
+       "_": {
+        "module": "voicemail",
+        "data": {
+         "id": "vm_main",
+         "action": "compose"
+        },
+        "children": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "cf_night_toggle": {
+   "name": "DimensionsFeatureCode_TimeServiceToggle",
+   "numbers": [],
+   "patterns": [
+    "^*57*([0-9]+)$"
+   ],
+   "featurecode": {
+    "name": "time_service_toggle",
+    "number": "57"
+   },
+   "flow": {
+    "module": "callflow",
+    "data": {},
+    "children": {}
+   }
+  },
+  "cf_orders": {
+   "name": "Order status line",
+   "numbers": [
+    "+18455550191"
+   ],
+   "flow": {
+    "module": "check_cid",
+    "data": {
+     "regex": "^\\+1845",
+     "use_absolute_mode": false
+    },
+    "children": {
+     "match": {
+      "module": "collect_dtmf",
+      "data": {
+       "collection_name": "account",
+       "max_digits": 6,
+       "timeout": 5000
+      },
+      "children": {
+       "_": {
+        "module": "set_variables",
+        "data": {
+         "custom_application_vars": {
+          "tier": "gold",
+          "source": "ivr"
+         }
+        },
+        "children": {
+         "_": {
+          "module": "language",
+          "data": {
+           "language": "es-us"
+          },
+          "children": {
+           "_": {
+            "module": "prepend_cid",
+            "data": {
+             "caller_id_name_prefix": "VIP ",
+             "action": "prepend"
+            },
+            "children": {
+             "_": {
+              "module": "pivot",
+              "data": {
+               "voice_url": "http://localhost:5173/dev/pivot-reply.json",
+               "method": "post",
+               "req_body_format": "json",
+               "req_format": "kazoo"
+              },
+              "children": {
+               "_": {
+                "module": "hangup",
+                "data": {},
+                "children": {}
+               }
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "nomatch": {
+      "module": "fax_detect",
+      "data": {
+       "duration": 3
+      },
+      "children": {
+       "ON_FAX": {
+        "module": "receive_fax",
+        "data": {
+         "owner_id": "u_alice"
+        },
+        "children": {}
+       },
+       "ON_VOICE": {
+        "module": "response",
+        "data": {
+         "code": 404,
+         "message": "Not here"
+        },
+        "children": {}
+       }
       }
      }
     }

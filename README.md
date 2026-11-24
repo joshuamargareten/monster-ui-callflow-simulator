@@ -1,13 +1,14 @@
-# Call Routing Visualizer for Kazoo (Monster UI app)
+# Callflow Simulator for Kazoo (Monster UI app)
 
-See where every call to a Kazoo account goes, and simulate any call at any moment.
+Run a test call through a Kazoo account's callflows, at any date and time, before a real caller
+does.
 
-Pick a phone number, a callflow or the whole account, and the app draws its routing as a map:
-time-of-day rules, menus, ring groups, queues, voicemail, callflow jumps. Choose a date and time,
-press keys on a menu's keypad, and the path the call takes lights up step by step, using
-Kazoo's own routing rules (ported from its Erlang source and tested against it). Play every
-greeting on the way, read each step's settings in plain language, and find broken configuration
-before a customer does.
+Choose a phone number, a callflow or the entire account, and the app lays its callflows out as an
+interactive diagram: time-of-day rules, IVR menus, ring groups, queues, call forwarding,
+voicemail, jumps between callflows. Set a date and time, pick keys on a menu's keypad, and each
+step of the test call is highlighted in turn, following the same rules Kazoo applies (ported from
+its Erlang source and tested against it). Listen to the greetings along the way, read every
+step's settings in plain words, and catch misconfigurations before your customers do.
 
 ![Simulating a call: time of day, a menu with key 2 pressed, answered by a queue](docs/screenshots/simulate.png)
 
@@ -18,10 +19,45 @@ before a customer does.
   **whole account** on one full-width map, with a search that finds steps on it.
 - **Simulate a call** at any date and time, using Monster's own date and time pickers. Time-of-day
   rules are evaluated the way Kazoo evaluates them, quirks included, so the map shows what Kazoo
-  *will* do, not what the rule's name suggests.
+  *will* do, not what the rule's name suggests. That includes start and end dates (holidays,
+  seasonal hours), rule sets, forced on/off rules, and the night-mode style **manual switches**
+  that a feature code flips.
+- **Flip switches in the simulator**: rules that are switched by hand or forced on/off are listed
+  under **Switches**; flip one to see where calls would go. Nothing is changed in Kazoo.
 - **Menus are phone keypads**: configured keys are live, unset keys are disabled. Press a key to
   follow the call; "no input" and "after max retries" are there too. A menu that loops back to
   itself ("press 9 to repeat") is understood as intentional.
+- **Colour-coded steps**: each kind of step has its own colour: steps that ring someone (users,
+  devices, groups, queues, conferences), steps that leave the account (carrier, outside numbers),
+  caller input (menus), announcements, voicemail and fax, and other features. Routing-only steps
+  (time of day, jumps) are slim outlined pills. A legend on the map explains them.
+- **Call forwarding is followed**: a user or device that forwards points to where the call
+  really goes. Kazoo forwards through the account's own callflows, so a forward to an extension
+  or one of the account's numbers leads into that route (another user, a ring group, the main
+  line), and anything else to an outside number. "Forward all calls", "also ring my phones",
+  SmartPBX's failover ("only when my phones are offline") and cell-phone/landline devices are
+  all simulated.
+- **Every Kazoo module**: all 78 callflow modules (plus Qubicle) get a proper step, with a
+  readable label, colour, settings and branch names, including the ones the Callflows app doesn't
+  offer, because a Pivot server or a Kazoo Function can answer with any of them. A module this app
+  doesn't know is still drawn, with all its settings. Steps that end the call (hang up, SIP
+  response) have their own colour.
+- **Call-time decisions**: steps whose branch depends on something only known when the call comes
+  in (caller-ID checks, caller-ID lists, variables, fax or voice, spam score, queue wait) pause the
+  simulation and offer each branch. Enter the **caller's number** and caller-ID checks follow it.
+- **Failure branches**: a branch named after a failure (`USER_BUSY`, `NO_ANSWER`, `sip:486`...) is
+  labelled ("If busy") and used when nobody answers.
+- **Skipped steps**: a step with `skip_module` on is shown crossed out, and calls go straight past
+  it to what comes after it, as Kazoo does.
+- **Test a pivot**: a Pivot step's details have **Test this pivot…**. After a warning (no real call
+  data is sent unless you add sample values; the request comes from your browser and IP, not
+  Kazoo; the server must allow browser requests), it asks the server what it would answer now. A
+  Kazoo JSON reply is drawn on the map after the pivot and the simulation follows it; an XML
+  (TwiML) reply is listed. You can also paste a reply instead of sending a request. The call data
+  is worked out from the route, as Kazoo would send it: digits collected on the way
+  (`Digits[<collection>]`), variables set on the way (`Custom-Application-Vars[<name>]`), the
+  language, and caller-ID changes. A reply Kazoo couldn't use is shown in full, with the reason and
+  the bad line marked.
 - **Phones answer or not**: simulate "someone answers", "nobody answers", or **right now**, which
   uses each phone's live registration.
 - **Play every greeting**: menu greetings and messages, voicemail greetings (Kazoo's own default
@@ -36,6 +72,10 @@ before a customer does.
 - **Fast on big accounts**: start-up loads five lists; opening a route fetches only what it needs
   and caches it. Read-only — the app never changes anything in Kazoo.
 - **Follows masquerading**: switch accounts, use `?m=<accountId>`, or Shift+M back.
+- **Usable from other apps**: a call log can open a dialog with the route a call took, at the
+  moment it came in, through Monster's pub/sub. See [docs/INTEGRATION.md](docs/INTEGRATION.md).
+
+![Colour-coded steps with the legend open; a call forward to an outside number at the bottom](docs/screenshots/colours.png)
 
 | Whole account | Greetings and details |
 | --- | --- |
@@ -48,7 +88,7 @@ Screenshots use a fictional demo account (`test/fixtures/synthetic-account.json`
 - **Kazoo** 4.x (developed against 4.5) with the Crossbar API.
 - **Monster UI** — tested on 5.4.19.9 (current releases) as a production build and from source.
 - Queues: **Qubicle** (`qubicle_queues`) is shown in full; other modules are drawn generically.
-- Optional: Dimensions' **DT-Callflows** app. When it is installed, the visualizer reuses its
+- Optional: Dimensions' **DT-Callflows** app. When it is installed, the simulator reuses its
   stylesheet and icon font, so it looks exactly like the Callflows app (and follows any
   Dimensions branding, including the embedded portal's). Without it the app uses its own
   equivalent layout and Monster's built-in icons — nothing else changes.
@@ -56,25 +96,25 @@ Screenshots use a fictional demo account (`test/fixtures/synthetic-account.json`
 ## Install
 
 > [!IMPORTANT]
-> **The installed folder must be named exactly `call-route-visualizer`.** Monster loads
-> `apps/call-route-visualizer/app.js`; any other folder name (such as GitHub's
-> `monster-ui-call-route-visualizer-main`) gives a 404 and "app not available".
+> **The installed folder must be named exactly `callflow-simulator`.** Monster loads
+> `apps/callflow-simulator/app.js`; any other folder name (such as GitHub's
+> `monster-ui-callflow-simulator-main`) gives a 404 and "app not available".
 > The release download below is already named correctly: use it rather than *Code → Download ZIP*.
 
 The Monster app is the [`app/`](app/) folder of this repository. It has no build step and no
-Handlebars templates. The app's name, `call-route-visualizer`, is the same everywhere: the app-store
+Handlebars templates. The app's name, `callflow-simulator`, is the same everywhere: the app-store
 record (`metadata/app.json`), `app.js`, the folder, and the page's wrapper element.
 
 ### 1. Put the files in Monster
 
 **Download the ready-to-install folder** from the
-[latest release](https://github.com/joshuamargareten/monster-ui-call-route-visualizer/releases/latest)
-(`call-route-visualizer.zip` or `.tar.gz`, both contain a single `call-route-visualizer/` folder):
+[latest release](https://github.com/joshuamargareten/monster-ui-callflow-simulator/releases/latest)
+(`callflow-simulator.zip` or `.tar.gz`, both contain a single `callflow-simulator/` folder):
 
 ```bash
 cd /var/www/monster-ui/apps          # the apps/ folder your web server serves
-curl -sL https://github.com/joshuamargareten/monster-ui-call-route-visualizer/releases/latest/download/call-route-visualizer.tar.gz | tar xz
-ls call-route-visualizer/app.js      # check: this path must exist
+curl -sL https://github.com/joshuamargareten/monster-ui-callflow-simulator/releases/latest/download/callflow-simulator.tar.gz | tar xz
+ls callflow-simulator/app.js      # check: this path must exist
 ```
 
 **Monster from source**: put the same folder in `src/apps/` and build as usual; the app is bundled
@@ -82,19 +122,19 @@ into `main.js` like the others:
 
 ```bash
 cd monster-ui/src/apps
-curl -sL https://github.com/joshuamargareten/monster-ui-call-route-visualizer/releases/latest/download/call-route-visualizer.tar.gz | tar xz
+curl -sL https://github.com/joshuamargareten/monster-ui-callflow-simulator/releases/latest/download/callflow-simulator.tar.gz | tar xz
 cd ../.. && gulp build-prod
 ```
 
 From a clone instead, copy **`app/`** (not the repository) under the app's name:
-`cp -r monster-ui-call-route-visualizer/app <monster>/apps/call-route-visualizer`.
+`cp -r monster-ui-callflow-simulator/app <monster>/apps/callflow-simulator`.
 
 ### 2. Register it in the app store
 
 On a Kazoo server that can read the app folder:
 
 ```bash
-sup crossbar_maintenance init_app '/var/www/monster-ui/apps/call-route-visualizer' 'https://kazoo.example.com:8443/v2/'
+sup crossbar_maintenance init_app '/var/www/monster-ui/apps/callflow-simulator' 'https://kazoo.example.com:8443/v2/'
 ```
 
 This reads [`app/metadata/app.json`](app/metadata/app.json), validates it against Kazoo's `app`
@@ -113,13 +153,13 @@ record).
 
 ### 3. Enable it
 
-In Monster's **App Exchange**, open *Call Routing Visualizer* and enable it for the account (and
+In Monster's **App Exchange**, open *Callflow Simulator* and enable it for the account (and
 users) that should have it. It is meant for admins and resellers.
 
 ### Trying it first
 
 Monster's official `bypassAppStorePermissions: true` config flag lets
-`#/apps/call-route-visualizer` open an app that isn't registered yet — handy on a development
+`#/apps/callflow-simulator` open an app that isn't registered yet — handy on a development
 Monster, never in production.
 
 ## Using it
@@ -130,13 +170,27 @@ Monster, never in production.
   whether phones answer. Press keys on a menu's keypad on the map, or in the panel.
 - Click any step for its details; click a number on the map to simulate calls to it.
 - Zoom with the buttons or the mouse wheel; drag to pan; switch left-to-right / top-to-bottom.
+- **Colours** (bottom left of the map) shows what each colour means.
+
+### From another app
+
+```js
+monster.pub('callflowSimulator.showRoute', { number: cdr.to, gregorian: cdr.timestamp });
+```
+
+opens the route a call took in a Monster dialog, with the date and time fixed. Copy
+[`integration/callflow-simulator-client.js`](integration/callflow-simulator-client.js) into your app to check availability (for
+a "Show route" link) and to load the simulator first. Details:
+[docs/INTEGRATION.md](docs/INTEGRATION.md).
 
 ## How it works
 
 ```
 app/
-  app.js                  Monster glue: start-up lists, on-demand fetching, pickers, masquerading
+  app.js                  Monster glue: start-up lists, on-demand fetching, pickers, masquerading,
+                          the pub/sub API (callflowSimulator.showRoute / .isAvailable)
   lib/temporal.js         Kazoo's temporal_route evaluator (port of cf_temporal_route + kz_date)
+  lib/modules.js          every callflow module: type, icon, colour, branches, labels, settings
   lib/graph.js            callflows -> graph; the call simulator; Kazoo branch semantics
   lib/loader.js           fetch-on-demand: what a route needs, following references, cached
   lib/details.js          plain-language details per module
@@ -148,7 +202,10 @@ app/
   metadata/               app-store record, icon, screenshots
 test/                     node --test, with a fictional account
 tools/kazoo-oracle/       differential test against Kazoo's own Erlang, in Docker
+integration/callflow-simulator-client.js helper other Monster apps copy to open the route dialog
 dev/preview.html          the UI with the fictional account — no Monster, no Kazoo
+                          (?locked=cf_main&at=2026-11-24T20:30 shows the route dialog's view)
+dev/pivot-reply.json      a sample Kazoo pivot reply, to try "Test this pivot" in the preview
 dev/monster-shim.html     loads app.js through RequireJS with a fake `monster` module
 ```
 
@@ -162,7 +219,18 @@ source and documented at the top of `app/lib/graph.js`:
 - jumping to another callflow is a **subroutine call** — when it ends, the call comes back and
   continues after the jump;
 - a branch's `_` child is a fallback for most modules but **not** for menu digits;
-- menus have `timeout` and `max_retries` children; jump loops stop after 50 branches.
+- menus have `timeout` and `max_retries` children; jump loops stop after 50 branches;
+- call forwarding goes through a loopback into the account's own callflows (so forwarding to an
+  extension rings that extension's route), and replaces the phones unless `substitute` is false;
+- `skip_module: true` on any step makes Kazoo skip it and continue with its `_` child;
+- conference, fax, transfer, pickup, eavesdrop and hang-up steps hand the call over, so anything
+  after them never runs; an outbound call (resources/offnet) that fails never falls back to `_`,
+  only to a branch named after the failure cause;
+- a rule's `end_date` stops it (stock Kazoo 4.3 ignores `end_date`; Teklink's Kazoo, SmartPBX and
+  DT-Callflows use it). By default the rule stops *at* the end date, so DT's end day (written as
+  midnight) is not included and SmartPBX's (written as 23:59:59) is. When the whitelabel's
+  DT-Callflows `temporalRuleEndDateExclusive` is `false`, the end day is included;
+- a pivot reply replaces the rest of the current callflow but keeps pending jump returns.
 
 ## Development
 
@@ -191,7 +259,7 @@ node tools/kazoo-oracle/diff.js <oracle-dir> 300000
 ```
 
 To try it inside a real Monster, run Monster UI's dev server (Node 14) with `app/` copied or
-mounted at `src/apps/call-route-visualizer`, and set `bypassAppStorePermissions: true` in
+mounted at `src/apps/callflow-simulator`, and set `bypassAppStorePermissions: true` in
 `src/js/config.js`.
 
 ## Credits

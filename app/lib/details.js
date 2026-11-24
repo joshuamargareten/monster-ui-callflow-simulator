@@ -9,17 +9,17 @@
  *   }
  *   crvDetails.ruleSummary(ruleDoc) -> "Mon–Fri · 9:00 AM – 5:00 PM"
  *
- * Never shows secrets (PINs, passwords, SIP credentials). UMD, ES5, no dependencies.
+ * Never shows secrets (PINs, passwords, SIP credentials). UMD, ES5; uses temporal.js for dates.
  */
 (function(root, factory) {
 	if (typeof define === 'function' && define.amd) {
-		define([], factory);
+		define(['./temporal', './modules'], factory);
 	} else if (typeof module === 'object' && module.exports) {
-		module.exports = factory();
+		module.exports = factory(require('./temporal'), require('./modules'));
 	} else {
-		root.crvDetails = factory();
+		root.crvDetails = factory(root.crvTemporal, root.crvModules);
 	}
-}(this, function() {
+}(this, function(temporal, catalog) {
 	'use strict';
 
 	var DOW_SHORT = { monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed', wensday: 'Wed', thursday: 'Thu', friday: 'Fri', saturday: 'Sat', sunday: 'Sun' };
@@ -66,9 +66,21 @@
 		return MONTHS[dt.getUTCMonth()].slice(0, 3) + ' ' + dt.getUTCDate() + ', ' + dt.getUTCFullYear();
 	}
 
-	/** Plain-language schedule for a temporal rule. */
-	function ruleSummary(doc) {
+	function ymdText(d) { return d ? MONTHS[d.m - 1].slice(0, 3) + ' ' + d.d + ', ' + d.y : ''; }
+	function sameDay(a, b) { return !!a && !!b && a.y === b.y && a.m === b.m && a.d === b.d; }
+
+	/**
+	 * Plain-language schedule for a temporal rule. opts: { timezone, endDate } — dates are shown in
+	 * the route's timezone, and end_date read the way Kazoo reads it (see temporal.endLsecOf).
+	 */
+	function ruleSummary(doc, opts) {
 		if (!doc) { return 'Deleted rule'; }
+		opts = opts || {};
+		var dates = temporal.ruleDates(doc, opts.timezone || 'UTC', opts.endDate);
+		if (dates.manual) {
+			return 'Manual switch · ' + (doc.enabled === true || doc.enabled === 'true' ? 'ON'
+				: (doc.enabled === false || doc.enabled === 'false' ? 'OFF' : 'no position set (acts as always on)'));
+		}
 		var start = parseInt(doc.time_window_start, 10), stop = parseInt(doc.time_window_stop, 10),
 			hasWindow = !isNaN(start) || !isNaN(stop),
 			allDay = !hasWindow || ((isNaN(start) || start <= 0) && (isNaN(stop) || stop >= 86399)),
@@ -84,7 +96,8 @@
 				when = every > 1 ? 'Every ' + every + ' days' : 'Every day';
 				break;
 			case 'date':
-				when = dateText(doc.start_date);
+				when = dates.start ? ymdText(dates.start) : dateText(doc.start_date);
+				if (dates.lastDay && !sameDay(dates.lastDay, dates.start)) { when += ' – ' + ymdText(dates.lastDay); }
 				break;
 			case 'monthly':
 				if (days.length) {
@@ -109,9 +122,41 @@
 				when = 'No schedule';
 		}
 		var text = when + ' · ' + time;
+		if (dates.lastDay && doc.cycle !== 'date') { text += ' · until ' + ymdText(dates.lastDay); }
 		if (doc.enabled === true || doc.enabled === 'true') { text = 'Forced ON (ignores schedule) · ' + text; }
 		if (doc.enabled === false || doc.enabled === 'false') { text = 'Forced OFF · ' + text; }
 		return text;
+	}
+
+	/** Where a rule stands right now, for the rules list: { text, status: ok|warn|muted }. */
+	function ruleState(doc, opts) {
+		var d;
+		try { d = temporal.describeRule(doc, { timezone: opts.timezone || 'UTC', endDate: opts.endDate }); } catch (e) { return null; }
+		var day = function(w) { return w ? ymdText(w.start) : ''; };
+		switch (d.state) {
+			case 'active': return { text: 'Now: active', status: 'ok' };
+			case 'forced-on': return { text: 'Now: on (' + (d.manual ? 'switched on' : 'forced') + ')', status: 'ok' };
+			case 'forced-off': return { text: 'Now: off (' + (d.manual ? 'switched off' : 'forced') + ')', status: 'muted' };
+			case 'upcoming': return { text: 'Next: ' + day(d.window), status: 'muted' };
+			case 'not-started': return { text: 'Starts ' + day(d.window), status: 'muted' };
+			case 'ended': return { text: 'Ended ' + ymdText(d.endedOn), status: 'muted' };
+			case 'never': return { text: d.detail, status: 'warn' };
+			case 'invalid': case 'error': return { text: d.detail, status: 'warn' };
+		}
+		return null;
+	}
+
+	function edgeFor2(edges, key) { return edges.filter(function(e) { return e.key === key; })[0] || null; }
+
+	/** How to flip a DT manual switch: *<TimeServiceToggle code>*<feature_code_id>. */
+	function switchCode(snap, doc) {
+		var id = get(doc, 'dimension.feature_code_id'), list = snap.callflow_list || snap.callflows || {}, code = null;
+		Object.keys(list).forEach(function(k) {
+			var cf = list[k];
+			if (cf && cf.name === 'DimensionsFeatureCode_TimeServiceToggle') { code = get(cf, 'featurecode.number') || code; }
+		});
+		if (id === undefined || id === null || id === '') { return 'Switched with a feature code'; }
+		return code ? 'Switch it: dial *' + String(code).replace(/^\*/, '') + '*' + id : 'Switch number ' + id + ' (feature code)';
 	}
 
 	function userName(u) {
@@ -172,7 +217,51 @@
 	function userItem(snap, id) {
 		var u = get(snap, 'users.' + id);
 		if (!u) { return { glyph: 'person_off', title: 'Deleted user', muted: true }; }
-		return { glyph: 'person', title: userName(u), sub: presenceText(snap, devicesOf(snap, id)) };
+		var f = forwardText(u), item = { glyph: 'person', title: userName(u), sub: presenceText(snap, devicesOf(snap, id)) };
+		if (f) { item.lines = [f]; }
+		return item;
+	}
+
+	/** "Forwards all calls to (845) 555-1234" for a user or device with call forwarding on. */
+	function forwardText(doc) {
+		if (!doc) { return null; }
+		var cf = doc.call_forward || {}, fo = doc.call_failover || {};
+		if (cf.enabled === true && cf.number) { return (cf.substitute === false ? 'Also forwards to ' : 'Forwards all calls to ') + phone(cf.number); }
+		if (fo.enabled === true && (fo.number || cf.number)) { return 'If offline, forwards to ' + phone(fo.number || cf.number); }
+		return null;
+	}
+	function phone(n) { var m = /^\+?1?(\d{3})(\d{3})(\d{4})$/.exec(String(n).replace(/[^\d+]/g, '')); return m ? '(' + m[1] + ') ' + m[2] + '-' + m[3] : String(n); }
+
+	var FORWARD_MODE = {
+		substitute: 'All calls — instead of ringing the phones',
+		parallel: 'All calls — rings the phones at the same time',
+		failover: 'Only when none of the phones is registered (failover)'
+	};
+
+	/** A user's or device's call forward (graph.js forwardOf) and where the forwarded call goes. */
+	function forwardSections(node, snap, graph) {
+		var f = node.forward;
+		if (!f) { return []; }
+		var edge = graph ? graph.edges.filter(function(e) { return e.from === node.id && e.kind === 'forward'; })[0] : null,
+			target = edge ? graph.nodes[edge.to] : null,
+			list = snap.callflow_list || snap.callflows || {},
+			cf = f.callflowId ? list[f.callflowId] : null,
+			goes = f.external ? 'Outside number — goes out through the carrier'
+				: (cf ? 'Routes through the callflow "' + (cf.name || (cf.numbers || [])[0] || f.callflowId) + '"' : null);
+		var rows = [
+			{ label: f.viaDevice ? 'Rings' : 'Forwards to', value: phone(f.number) },
+			{ label: 'When', value: f.viaDevice ? 'Every call to this device' : FORWARD_MODE[f.mode] },
+			{ label: 'Where it goes', value: goes },
+			{ label: 'Direct calls only', value: f.directOnly ? 'Yes — calls through a ring group or queue aren\'t forwarded' : null },
+			{ label: 'Caller must press 1', value: f.keypress ? 'Yes — the person answering presses 1 to accept' : null },
+			{ label: 'Caller ID', value: f.viaDevice ? null : (f.keepCallerId ? 'The original caller\'s' : 'This user\'s') }
+		];
+		var out = [section(f.viaDevice ? 'Rings an outside phone' : 'Call forwarding', rows)];
+		if (target) {
+			out.push(itemList('Forwarded calls go to', [{ glyph: target.glyph || 'arrow_forward', title: target.label,
+				sub: target.type ? humanize(String(target.type).toLowerCase()) : null, nodeId: target.id }]));
+		}
+		return out;
 	}
 
 	function endpointItem(snap, ep) {
@@ -188,6 +277,14 @@
 	function compact(rows) { return rows.filter(function(r) { return r && r.value !== null && r.value !== undefined && r.value !== ''; }); }
 
 	/** Generic, readable rendering of a step's data (fallback for modules without a recipe). */
+	function catalogCtx(snap) {
+		return {
+			name: function(col, id) { var d = get(snap, col + '.' + id); return d ? (col === 'users' ? (userName(d) || id) : (d.name || id)) : id; },
+			num: function(n) { return String(n); },
+			cut: function(t, n) { t = String(t || ''); return t.length > n ? t.slice(0, n - 1) + '…' : t; }
+		};
+	}
+
 	function genericRows(data) {
 		return Object.keys(data || {}).filter(function(k) { return !SECRET.test(k) && k !== 'id'; }).map(function(k) {
 			var v = data[k];
@@ -229,6 +326,14 @@
 			return { sections: s.filter(Boolean) };
 		}
 
+		if (node.skipped) {
+			var after = edgeFor2(outgoing, '_');
+			s.push(section('Skipped', [
+				{ label: 'Kazoo', value: 'Does not run this step (skip is on)' },
+				{ label: 'Goes to', value: after ? targetItem(after).title : 'Nothing — the call ends here' }
+			]));
+		}
+
 		switch (node.module) {
 			case 'user':
 				var devs = doc ? devicesOf(snap, data.id) : [];
@@ -243,6 +348,7 @@
 					doc && get(doc, 'music_on_hold.media_id') ? mediaRow(snap, 'Hold music', get(doc, 'music_on_hold.media_id')) : null
 				]));
 				s.push(itemList('Rings these devices (' + devs.length + ')', devs.map(function(id) { return deviceItem(snap, id); })));
+				s = s.concat(forwardSections(node, snap, graph));
 				break;
 
 			case 'device':
@@ -255,6 +361,20 @@
 					{ label: 'Status now', value: doc ? presenceText(snap, [data.id]) : null },
 					doc && get(doc, 'music_on_hold.media_id') ? mediaRow(snap, 'Hold music', get(doc, 'music_on_hold.media_id')) : null
 				]));
+				s = s.concat(forwardSections(node, snap, graph));
+				break;
+
+			case 'external':
+				var from = graph ? graph.edges.filter(function(e) { return e.to === node.id && e.kind === 'forward'; }).map(function(e) { return graph.nodes[e.from]; }).filter(Boolean) : [];
+				s.push(section('Outside number', [
+					{ label: 'Number', value: node.label },
+					{ label: 'How', value: 'Kazoo calls it out through the carrier, like any outbound call (the account\'s no-match route)' }
+				]));
+				var cfs = snap.callflow_list || snap.callflows || {};
+				s.push(itemList('Forwarded here by', from.map(function(n) {
+					var cfName = n.callflowId && cfs[n.callflowId] ? (cfs[n.callflowId].name || (cfs[n.callflowId].numbers || [])[0]) : null;
+					return { glyph: n.glyph || 'person', title: n.label, sub: (n.type ? humanize(String(n.type).toLowerCase()) : '') + (cfName ? ' · in ' + cfName : ''), nodeId: n.id };
+				})));
 				break;
 
 			case 'ring_group':
@@ -354,14 +474,21 @@
 				// data.rules plus branch keys not listed there (Kazoo checks both, in that order).
 				var ruleIds = (data.rules || []).slice();
 				outgoing.forEach(function(e) { if (e.key && e.key !== '_' && ruleIds.indexOf(e.key) === -1) { ruleIds.push(e.key); } });
+				var ropts = { timezone: tz, endDate: get(snap, 'settings.endDate') || 'exclusive' };
 				var ruleItems = ruleIds.map(function(id, i) {
 					var set = get(snap, 'temporal_rules_sets.' + id), r = set ? null : get(snap, 'temporal_rules.' + id), e = edgeFor(id), it;
 					if (set) {
 						it = { glyph: 'event_repeat', title: 'Set: ' + (set.name || id), lines: (set.temporal_rules || []).map(function(rid) {
-							var rr = get(snap, 'temporal_rules.' + rid); return (rr ? rr.name + ' — ' : '') + ruleSummary(rr);
+							var rr = get(snap, 'temporal_rules.' + rid); return (rr ? rr.name + ' — ' : '') + ruleSummary(rr, ropts);
 						}) };
 					} else {
-						it = { glyph: r ? 'schedule' : 'error', title: r ? r.name : 'Deleted rule', sub: ruleSummary(r), muted: !r };
+						var manual = r && temporal.isManual(r);
+						it = { glyph: r ? (manual ? 'toggle_on' : 'schedule') : 'error', title: r ? r.name : 'Deleted rule', sub: ruleSummary(r, ropts), muted: !r, lines: [] };
+						if (r) {
+							var st = ruleState(r, ropts);
+							if (st) { it.lines.push(st.text); it.status = st.status; }
+							if (manual) { it.lines.push(switchCode(snap, r)); }
+						}
 					}
 					it.key = String(i + 1);
 					if (!control) {
@@ -432,11 +559,18 @@
 				break;
 
 			case 'pivot':
+				// cf_pivot.erl: method (default get), req_format, req_body_format (POST: form|json),
+				// req_timeout_ms, debug, cdr_url. On failure or timeout Kazoo continues with `_`.
+				var pmethod = String(data.method || 'get').toUpperCase(), pfail = edgeFor2(outgoing, '_');
 				s.push(section('Pivot (external server decides)', [
-					{ label: 'URL', value: data.voice_url },
-					{ label: 'Method', value: data.method ? String(data.method).toUpperCase() : null },
-					{ label: 'Format', value: data.req_format },
-					{ label: 'Timeout', value: data.req_timeout ? data.req_timeout + ' sec' : null }
+					{ label: 'URL', value: data.voice_url || 'Not set' },
+					{ label: 'Method', value: pmethod + (data.method ? '' : ' (default)') },
+					{ label: 'Reply format', value: data.req_format ? ({ kazoo: 'Kazoo JSON (callflow)', twiml: 'TwiML (XML)' }[data.req_format] || data.req_format) : 'TwiML (default)' },
+					{ label: 'Body format', value: pmethod === 'POST' ? (data.req_body_format === 'json' ? 'JSON' : 'Form') : null },
+					{ label: 'Timeout', value: data.req_timeout_ms ? (data.req_timeout_ms / 1000) + ' sec' : (data.req_timeout ? data.req_timeout + ' sec' : null) },
+					{ label: 'Debug log', value: data.debug ? 'On' : null },
+					{ label: 'Sends call records to', value: data.cdr_url || null },
+					{ label: 'If the server fails', value: pfail ? 'Goes to ' + targetItem(pfail).title : 'The call ends' }
 				]));
 				break;
 
@@ -456,7 +590,28 @@
 				break;
 
 			default:
-				s.push(section(node.type ? humanize(String(node.type).toLowerCase()) : humanize(node.module || 'Step'), genericRows(data)));
+				var cinfo = catalog.info(node.module), title = node.type ? humanize(String(node.type).toLowerCase()) : humanize(node.module || 'Step');
+				var crows = cinfo.rows ? cinfo.rows(data, catalogCtx(snap)).map(function(r) { return { label: r[0], value: r[1] }; }) : genericRows(data);
+				if (cinfo.end) { crows.push({ label: 'Then', value: cinfo.end(data, catalogCtx(snap)) }); }
+				else if (cinfo.hunts) { crows.push({ label: 'Then', value: cinfo.hunts }); }
+				if (cinfo.service) { crows.push({ label: 'Needs', value: cinfo.service + ' (a separate Kazoo service)' }); }
+				if (!catalog.known(node.module)) { crows.unshift({ label: 'Module', value: node.module + ' (not one this app knows)' }); }
+				s.push(section(title, crows));
+				if (cinfo.rows && genericRows(data).length) {
+					s.push(section('All settings', genericRows(data)));
+				}
+		}
+
+		// Named branches the sections above don't list: decisions (match / nomatch, values, fax or
+		// voice...) and failure causes (USER_BUSY...).
+		if (['menu', 'temporal_route'].indexOf(node.module) === -1) {
+			var named = outgoing.filter(function(e) { return e.key && e.key !== '_' && e.kind !== 'forward' && e.kind !== 'pivot'; });
+			if (named.length) {
+				var other = outgoing.filter(function(e) { return e.key === '_'; })[0];
+				s.push(itemList('Branches', named.map(function(e) {
+					var it = targetItem(e); return { glyph: e.kind === 'failure' ? 'error' : 'fork_right', title: e.label || e.key, cells: ['→ ' + it.title], nodeId: e.to };
+				}).concat(other ? [{ glyph: 'alt_route', title: other.label || 'Otherwise', cells: ['→ ' + targetItem(other).title], nodeId: other.to }] : [])));
+			}
 		}
 		return { sections: s.filter(Boolean) };
 	}

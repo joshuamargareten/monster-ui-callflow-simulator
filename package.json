@@ -1,8 +1,8 @@
 {
-  "name": "call-route-visualizer",
+  "name": "callflow-simulator",
   "version": "1.0.0",
   "private": true,
-  "description": "Monster UI app that maps and simulates Kazoo call routing.",
+  "description": "Monster UI app that runs test calls through Kazoo callflows and diagrams the path.",
   "scripts": {
     "test": "node --test test/"
   },

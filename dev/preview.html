@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CRV Preview</title>
+<title>Callflow Simulator preview</title>
 <!--
-	Dev harness: the visualizer WITHOUT Monster or Kazoo, using the fictional synthetic account.
+	Dev harness: the simulator WITHOUT Monster or Kazoo, using the fictional synthetic account.
 	Like the real app it starts with only the lists and fetches the rest on demand — here from a
 	fake Kazoo with ~120ms latency, so lazy loading is visible. Serve the project root and open
 	/dev/preview.html.
@@ -20,6 +20,9 @@
 	  ?press=2               press that key on the first menu
 	  ?zoom=1.8              then zoom in around that step (or ?focus=<module>)
 	  ?shot=1                hide the "preview" banner (for screenshots)
+	  ?legend=1              open the colour legend
+	  ?locked=<callflowId|number>  the locked view another app's dialog shows (callflowSimulator.showRoute),
+	                         at ?at= (or now)
 	Styling: DT-Callflows' stylesheet + font when available in reference/dt-callflows (not part of
 	the public repo), otherwise the app's own fallback layout and Monster's sprite icons.
 -->
@@ -59,6 +62,7 @@
 <script src="../node_modules/jquery/dist/jquery.min.js"></script>
 <script src="../app/lib/vendor/dagre.min.js"></script>
 <script src="../app/lib/temporal.js"></script>
+<script src="../app/lib/modules.js"></script>
 <script src="../app/lib/graph.js"></script>
 <script src="../app/lib/details.js"></script>
 <script src="../app/lib/loader.js"></script>
@@ -109,9 +113,11 @@
 			}
 			nowFn = function() { return guess; };
 		}
+		var lockTo = params.get('locked');
 		window.crv = crvView.mount($('#root'), {
 			snapshot: snapshot,
 			now: nowFn,
+			locked: lockTo ? { entry: full.callflows[lockTo] ? { type: 'callflow', id: lockTo } : { type: 'did', number: lockTo }, at: nowFn ? nowFn() : Date.now() } : null,
 			ensure: function(entry, onProgress, done) { loader.ensure(entry, window.crv.entries, onProgress, done); },
 			// No Kazoo here: every recording / system prompt plays a short generated tone instead.
 			mediaUrl: function() { return toneUrl(440, 3); },
@@ -119,8 +125,9 @@
 		});
 		autoOpen(window.crv, params);
 		if (params.get('shot')) { document.querySelector('.dev-banner').hidden = true; }
+		if (params.get('legend')) { $('.crv-legend__toggle').trigger('click'); }
 
-	}).catch(function(e) { document.getElementById('root').textContent = 'Failed: ' + e; });
+	}).catch(function(e) { console.error(e); (document.getElementById('root') || document.getElementById('callflow_container') || document.body).insertAdjacentText('afterbegin', 'Failed: ' + e); });
 	/** ?open / ?callflow / ?mode / ?node / ?play: put the page in a given state (screenshots). */
 	function autoOpen(v, params) {
 		var wait = function(test, then) { var n = 0, t = setInterval(function() { if (test() || ++n > 100) { clearInterval(t); then(); } }, 50); };
@@ -156,6 +163,7 @@
 		if (params.get('mode') === 'account') { v.setMode('account'); wait(loaded, afterLoad); }
 		else if (params.get('callflow')) { v.setMode('callflows'); v._select(params.get('callflow')); wait(loaded, afterLoad); }
 		else if (params.get('open')) { v._select(params.get('open')); wait(loaded, afterLoad); }
+		else if (params.get('locked')) { wait(loaded, afterLoad); }
 		else { window.crvReady = true; }
 	}
 }());

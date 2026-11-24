@@ -1,10 +1,13 @@
 /**
- * temporal.js — Kazoo temporal_route evaluator for the Call Route Visualizer.
+ * temporal.js — Kazoo temporal_route evaluator for the Callflow Simulator.
  *
  * A function-for-function port of Kazoo 4.3:
  *   applications/callflow/src/module/cf_temporal_route.erl  (process_rules, next_rule_date, ...)
  *   core/kazoo_stdlib/src/kz_date.erl                       (normalize, from_iso_week, ...)
  *   applications/callflow/src/cf_util.erl                   (get_timezone)
+ *
+ * Plus one thing stock Kazoo 4.3 doesn't have: `end_date`. Teklink's Kazoo (and SmartPBX /
+ * DT-Callflows, which write it) stop a rule at its end_date — see endLsecOf / isEnded.
  *
  * GOAL: predict what Kazoo WILL do, not what would be "correct". Kazoo's quirks are kept on
  * purpose and marked "KAZOO QUIRK". Where Kazoo would crash (and so fail the call) we throw a
@@ -546,6 +549,30 @@
 		return { y: local.y, m: local.m, d: local.d };
 	}
 
+	/**
+	 * end_date as naive local seconds (our epoch, like LSec), read the way Kazoo reads start_date:
+	 * gregorian UTC seconds converted into the route's timezone. null when there is no end date.
+	 *   'exclusive' (Teklink; DT-Callflows temporalRuleEndDateExclusive): the rule stops AT
+	 *               end_date. DT writes midnight of the end day, so that day is not included;
+	 *               SmartPBX writes 23:59:59 of its last day, so that day is.
+	 *   'inclusive' a midnight end_date includes its own day (DT without that setting).
+	 */
+	function endLsecOf(doc, timezone, endMode) {
+		var v = doc.end_date;
+		if (v === undefined || v === null || v === '' || v === 0 || v === '0') { return null; }
+		var secs = toInteger(v, null, 'end_date'),
+			local = toLocal((secs - GREGORIAN_UNIX_OFFSET) * 1000, timezone),
+			sod = local.hour * 3600 + local.minute * 60 + local.second,
+			lsec = gdays({ y: local.y, m: local.m, d: local.d }) * SECONDS_IN_DAY + sod;
+		return endMode === 'inclusive' && sod === 0 ? lsec + SECONDS_IN_DAY : lsec;
+	}
+
+	// DT-Callflows "manual" rule (night-mode switch): cycle daily, no window, `enabled` flipped by
+	// a feature code. Kazoo treats it like any forced rule; only the wording differs.
+	function isManual(doc) {
+		return !!(doc && doc.dimension && doc.dimension.rule_type === 'manual');
+	}
+
 	function gregorianSecondsToUnixMs(seconds) {
 		return (seconds - GREGORIAN_UNIX_OFFSET) * 1000;
 	}
@@ -555,9 +582,11 @@
 	 * start_date: kzd_temporal_rules:start_date(Doc, LSec) — local seconds treated as UTC.
 	 * KAZOO QUIRK kept.
 	 */
-	function buildRule(id, doc, timezone, lsecGregorian) {
+	function buildRule(id, doc, timezone, lsecGregorian, endMode) {
 		var startSeconds = toInteger(doc.start_date, lsecGregorian, 'start_date');
 		return {
+			manual: isManual(doc),
+			endLsec: endLsecOf(doc, timezone, endMode),
 			id: id,
 			name: toNonEmptyString(doc.name, DEFAULTS.name),
 			cycle: toNonEmptyString(doc.cycle, DEFAULTS.cycle),
@@ -641,6 +670,11 @@
 		return { outcome: 'active', window: win };
 	}
 
+	// The rule's end_date has passed (see endLsecOf): it no longer applies at all.
+	function isEnded(rule, now) {
+		return rule.endLsec !== null && rule.endLsec !== undefined && now.lsec > rule.endLsec; // like Kazoo's own "LSec > End"
+	}
+
 	function isFutureStart(rule, now) {
 		// kz_date:relative_difference(Now, {StartDate, {0,0,0}}) =:= 'future'
 		return gdays(rule.startDate) * SECONDS_IN_DAY > now.lsec;
@@ -721,7 +755,8 @@
 			trace = [],
 			seen = {},
 			kazooError = null,
-			built = [];
+			built = [],
+			endMode = args.endDate || 'exclusive';
 
 		// Phase 1 — get_temporal_rules/2: load, discard future starts, build. A crash here takes
 		// down the whole route in Kazoo, even for a rule that would never be reached.
@@ -741,14 +776,21 @@
 			}
 			entry.name = toNonEmptyString(doc.name, DEFAULTS.name);
 			try {
-				var rule = buildRule(route.branch, doc, timezone, now.lsecGregorian);
+				var rule = buildRule(route.branch, doc, timezone, now.lsecGregorian, endMode);
 				if (Object.prototype.hasOwnProperty.call(force, route.ruleId)) {
 					rule.enabled = force[route.ruleId];
 				}
 				entry.name = rule.name;
+				entry.manual = rule.manual;
 				if (isFutureStart(rule, now)) {
 					entry.outcome = 'future-start';
 					entry.detail = 'start_date ' + fmtDate(rule.startDate) + ' is in the future — Kazoo discards the rule.';
+					return;
+				}
+				// Checked with start_date, before any forcing: past its end date a rule is gone.
+				if (isEnded(rule, now)) {
+					entry.outcome = 'ended';
+					entry.detail = 'Its end date has passed (last day ' + fmtDate(lsecToLocal(rule.endLsec - 1)) + ') — the rule no longer applies.';
 					return;
 				}
 				built.push({ rule: rule, entry: entry });
@@ -771,12 +813,12 @@
 			}
 			if (rule.enabled === false) {
 				entry.outcome = 'disabled';
-				entry.detail = 'Forced off (enabled: false).';
+				entry.detail = rule.manual ? 'Manual switch is OFF.' : 'Forced off (enabled: false).';
 				return;
 			}
 			if (rule.enabled === true) {
 				entry.outcome = 'forced';
-				entry.detail = 'Forced on (enabled: true) — matches regardless of time.';
+				entry.detail = rule.manual ? 'Manual switch is ON — matches regardless of time.' : 'Forced on (enabled: true) — matches regardless of time.';
 				bestEffort = entry;
 				if (!kazooError) { winner = entry; }
 				return;
@@ -838,13 +880,17 @@
 			horizon = opts.horizonDays || 400,
 			rule;
 		try {
-			rule = buildRule(doc.id || null, doc, timezone, now.lsecGregorian);
+			rule = buildRule(doc.id || null, doc, timezone, now.lsecGregorian, opts.endDate);
 		} catch (e) {
 			if (!(e instanceof KazooCrash)) { throw e; }
 			return { state: 'error', window: null, detail: e.message };
 		}
-		if (rule.enabled === true) { return { state: 'forced-on', window: null, detail: 'Forced on — always active.' }; }
-		if (rule.enabled === false) { return { state: 'forced-off', window: null, detail: 'Forced off — never active.' }; }
+		if (isEnded(rule, now)) {
+			var last = lsecToLocal(rule.endLsec - 1);
+			return { state: 'ended', window: null, endedOn: { y: last.y, m: last.m, d: last.d }, detail: 'Ended ' + fmtDate(last) + '.' };
+		}
+		if (rule.enabled === true) { return { state: 'forced-on', manual: rule.manual, window: null, detail: rule.manual ? 'Manual switch ON — always active.' : 'Forced on — always active.' }; }
+		if (rule.enabled === false) { return { state: 'forced-off', manual: rule.manual, window: null, detail: rule.manual ? 'Manual switch OFF — never active.' : 'Forced off — never active.' }; }
 		if (rule.cycle === '') { return { state: 'invalid', window: null, detail: 'No cycle set.' }; }
 		if (rule.wtimeStop < rule.wtimeStart) {
 			return { state: 'never', window: null, detail: 'Window ends before it starts (crosses midnight) — Kazoo never matches it.' };
@@ -867,6 +913,7 @@
 					lsec: gdays(day) * SECONDS_IN_DAY + rule.wtimeStart
 				};
 				if (isFutureStart(rule, probe)) { continue; }
+				if (isEnded(rule, probe)) { break; } // and never again
 				var res = testWindow(rule, probe);
 				if (res.outcome === 'active') {
 					// A one-off `date` rule's start_date IS its occurrence, so ahead of today it's
@@ -882,6 +929,9 @@
 		} catch (e) {
 			if (!(e instanceof KazooCrash)) { throw e; }
 			return { state: 'error', window: null, detail: e.message };
+		}
+		if (rule.endLsec !== null && rule.cycle !== 'date') {
+			return { state: 'never', window: null, detail: 'Not active again before it ends ' + fmtDate(lsecToLocal(rule.endLsec - 1)) + '.' };
 		}
 		if (rule.cycle === 'date' && compareDates(rule.startDate, now.date) <= 0) {
 			return { state: 'ended', window: null, endedOn: rule.startDate, detail: 'Ended ' + fmtDate(rule.startDate) + '.' };
@@ -933,16 +983,27 @@
 		if (doc.ordinal === 'fifth' && toInteger(doc.interval, 1, 'interval') > 1) {
 			add('warning', 'fifth-interval-bug', 'Known Kazoo bug: "fifth" weekday with interval > 1 can land on the wrong date.');
 		}
-		if (doc.end_date !== undefined && cycle !== 'date') {
-			var endMs = gregorianSecondsToUnixMs(toInteger(doc.end_date, 0, 'end_date'));
-			if (endMs < nowMs) {
-				add('warning', 'end-date-ignored', 'end_date has passed, but Kazoo 4.3 ignores end_date — the rule keeps matching. (4.5 behaviour unverified.)');
+		try {
+			var tzl = (opts && opts.timezone) || 'UTC',
+				nowL = resolveNow({ instant: nowMs }, tzl),
+				endL = endLsecOf(doc, tzl, opts && opts.endDate),
+				startL = gdays(fromGregorianSeconds(toInteger(doc.start_date, nowL.lsecGregorian, 'start_date'), tzl)) * SECONDS_IN_DAY;
+			if (endL !== null && endL <= startL) {
+				add('warning', 'end-before-start', 'Its end date is on or before its start date — it never applies.');
+			} else if (endL !== null && nowL.lsec > endL) {
+				add('info', 'ended', 'Ended ' + fmtDate(lsecToLocal(endL - 1)) + ' — it no longer applies.');
 			}
+		} catch (e) {
+			if (!(e instanceof KazooCrash)) { throw e; }
+			add('error', 'bad-date', e.message);
+		}
+		if (isManual(doc) && doc.enabled === undefined) {
+			add('info', 'manual-unset', 'Manual switch has no position, so it runs as a daily all-day rule: it always matches.');
 		}
 		// The dry run catches what static checks can't; when they already found an error, it
 		// would only report the same cause again.
 		var hasError = issues.some(function(i) { return i.level === 'error'; });
-		var dry = hasError ? null : dryRun(doc, (opts && opts.timezone) || 'UTC', nowMs, 366);
+		var dry = hasError ? null : dryRun(doc, (opts && opts.timezone) || 'UTC', nowMs, 366, opts && opts.endDate);
 		if (dry) {
 			add('error', dry.kind === 'hang' ? 'kazoo-hang' : 'kazoo-crash',
 				(dry.kind === 'hang' ? 'Kazoo loops forever on this rule' : 'Kazoo crashes on this rule') +
@@ -957,11 +1018,11 @@
 	 * hang ({ date, kind, message }) or null. Catches what static checks can't, e.g. a yearly
 	 * "fifth Sunday of February" every 4 years that never finds a date.
 	 */
-	function dryRun(doc, timezone, nowMs, days) {
+	function dryRun(doc, timezone, nowMs, days, endMode) {
 		var today, rule;
 		try {
 			today = resolveNow({ instant: nowMs }, timezone);
-			rule = buildRule(null, doc, timezone, today.lsecGregorian);
+			rule = buildRule(null, doc, timezone, today.lsecGregorian, endMode);
 		} catch (e) {
 			if (!(e instanceof KazooCrash)) { throw e; }
 			return { date: today ? today.date : null, kind: e.kind, message: e.message };
@@ -971,6 +1032,7 @@
 			var day = addDays(today.date, k),
 				probe = { date: day, secOfDay: 0, lsec: gdays(day) * SECONDS_IN_DAY };
 			if (isFutureStart(rule, probe)) { continue; }
+			if (isEnded(rule, probe)) { break; }
 			try {
 				testWindow(rule, probe);
 			} catch (e) {
@@ -981,8 +1043,29 @@
 		return null;
 	}
 
+	/**
+	 * A rule's dates for display, in the route's timezone: { start, lastDay } as {y, m, d}
+	 * (lastDay null without an end date), and whether it is a DT manual switch.
+	 */
+	function ruleDates(doc, timezone, endMode) {
+		var out = { start: null, lastDay: null, manual: isManual(doc) };
+		if (!doc) { return out; }
+		try {
+			if (doc.start_date !== undefined && doc.start_date !== null && doc.start_date !== '') {
+				out.start = fromGregorianSeconds(toInteger(doc.start_date, 0, 'start_date'), timezone || 'UTC');
+			}
+			var end = endLsecOf(doc, timezone || 'UTC', endMode);
+			if (end !== null) { var l = lsecToLocal(end - 1); out.lastDay = { y: l.y, m: l.m, d: l.d }; }
+		} catch (e) {
+			if (!(e instanceof KazooCrash)) { throw e; }
+		}
+		return out;
+	}
+
 	return {
 		evaluateRoute: evaluateRoute,
+		ruleDates: ruleDates,
+		isManual: isManual,
 		describeRule: describeRule,
 		lintRule: lintRule,
 		resolveTimezone: resolveTimezone,

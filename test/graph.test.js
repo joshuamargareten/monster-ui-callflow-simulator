@@ -45,9 +45,9 @@ test('listEntries classifies numbers and finds unassigned ones', function() {
 		(byCat[k] = byCat[k] || []).push(e.number);
 	});
 	assert.deepEqual(byCat['did-unassigned'].sort(), ['+18455550155', '+18455550166']);
-	assert.deepEqual(byCat.extension.sort(), ['0', '8001', '8002']);
+	assert.deepEqual(byCat.extension.sort(), ['0', '103', '8001', '8002']);
 	assert.deepEqual(byCat.featurecode.sort(), ['*3', '*55']);
-	assert.equal(byCat.did.length, 6);
+	assert.equal(byCat.did.length, 9);
 });
 
 test('nodes get human labels, types, icons and playable media', function() {

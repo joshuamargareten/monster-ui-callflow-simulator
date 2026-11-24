@@ -1,4 +1,4 @@
-/* Call Routing Visualizer.
+/* Callflow Simulator.
  *
  * The list, header, search box and buttons use DT-Callflows' own markup, so DT-Callflows'
  * stylesheet (apps/dt-callflows/style/app.css) and the Dimensions overrides (css/dt-callflows.css)
@@ -6,12 +6,12 @@
  * have (the map, keypad, simulator, details) and reads Dimensions' design tokens (branding.css)
  * with Dimensions' own values as fallbacks.
  *
- * Scope: the app's wrapper is #call-route-visualizer.call-route-visualizer (the app's name); every
+ * Scope: the app's wrapper is #callflow-simulator.callflow-simulator (the app's name); every
  * other class here has the `crv-` prefix, so nothing leaks into Monster or other apps.
  */
 
 /* Monster host: fill the space under Monster's top bar. */
-#call-route-visualizer, .crv-host { height: calc(100vh - 64px); min-height: 560px; }
+#callflow-simulator, .crv-host { height: calc(100vh - 64px); min-height: 560px; }
 .crv-loading { display: flex; align-items: center; justify-content: center; gap: 8px; height: 100%;
 	color: var(--buttonColor2, #6B777b); font: 14px var(--fontOverride, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif); }
 .crv-loading--error { color: var(--textColor5, #e82c3b); }
@@ -42,6 +42,7 @@
 	--crv-radius: 6px;
 }
 #callflow_container.crv-app {
+	position: relative;
 	height: 100%;
 	min-height: 560px;
 	color: var(--crv-text);
@@ -107,6 +108,13 @@
 /* Whole account: no list, the map takes the full width. */
 #callflow_container.crv-app.crv-mode-account .left-bar-container { display: none; }
 #callflow_container.crv-app.crv-mode-account .callflow-content { margin-left: 0; }
+/* Locked view (another app's dialog, e.g. a call log): one route at one moment. */
+#callflow_container.crv-app.crv-locked .crv-mode { display: none; }
+.crv-app .crv-locked-when { display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin: 4px 0 8px; border-radius: 6px; background: var(--crv-accent-soft); }
+.crv-app .crv-locked-when .crv-glyph-sm { font-size: 26px; color: var(--crv-accent); }
+.crv-app .crv-locked-when b { display: block; color: var(--crv-heading); font-weight: 600; font-size: 14px; }
+.crv-app .crv-locked-when small { display: block; color: var(--crv-muted); font-size: 11px; }
+.crv-dialog-host { width: 100%; height: 100%; }
 
 /* Date/time: Monster's own pickers (jQuery UI datepicker + jquery-timepicker) on plain text
    inputs, like Callflows' time of day. Bootstrap 2 sizes inputs globally; give ours one height so
@@ -308,6 +316,53 @@
 .crv-app .crv-node.crv-role--logic .crv-node__sub { color: var(--crv-muted); font-size: 11px; margin-top: 0; }
 .crv-app .crv-node.crv-role--logic .crv-node__badge { min-width: 18px; height: 18px; }
 
+/*
+ * Step families: one colour per kind of step (graph.js FAMILY), shown as a stripe down the
+ * card's left edge, the icon colour, and the type line. Not in the design tokens, so they're
+ * the app's own; chosen to read on the dark action block and on white.
+ *   bridge  connects the caller to someone (users, devices, groups, queues, conferences)
+ *   outside leaves the account (carrier, outside numbers, Pivot)
+ *   input   waits for the caller (menus, directory)
+ *   media   plays something     mailbox  takes a message (voicemail, fax)     feature  anything else
+ */
+.crv-app {
+	--crv-fam-bridge: #2fbf71; --crv-fam-outside: #17b6c4; --crv-fam-input: #f59f0b; --crv-fam-media: #6d8ff8;
+	--crv-fam-mailbox: #ec6aa6; --crv-fam-feature: #a3acc2;
+}
+.crv-app .crv-fam--bridge { --crv-fam: var(--crv-fam-bridge); }
+.crv-app .crv-fam--outside { --crv-fam: var(--crv-fam-outside); }
+.crv-app .crv-fam--input { --crv-fam: var(--crv-fam-input); }
+.crv-app .crv-fam--media { --crv-fam: var(--crv-fam-media); }
+.crv-app .crv-fam--mailbox { --crv-fam: var(--crv-fam-mailbox); }
+.crv-app .crv-fam--feature { --crv-fam: var(--crv-fam-feature); }
+.crv-app .crv-node.crv-role--call[class*="crv-fam--"] { padding-left: 14px;
+	background-image: linear-gradient(90deg, var(--crv-fam, transparent) 0 6px, transparent 6px); background-origin: border-box; background-repeat: no-repeat; }
+.crv-app .crv-node.crv-role--call .crv-glyph { color: var(--crv-fam, inherit); }
+.crv-app .crv-node.crv-role--call .crv-node__type { color: color-mix(in srgb, var(--crv-fam, var(--crv-node-text)) 80%, #ffffff); }
+.crv-app .crv-node.crv-fam--outside { background-color: color-mix(in srgb, var(--crv-node-bg) 88%, var(--crv-fam-outside)); }
+.crv-app .crv-dhead[class*="crv-fam--"] .crv-dhead__icon { box-shadow: inset 4px 0 0 var(--crv-fam); color: var(--crv-fam); }
+/* Call forward: from a user or device to where the forwarded call goes. */
+.crv-app .crv-edge--forward path { stroke: var(--crv-fam-bridge); stroke-opacity: .95; stroke-width: 2; stroke-dasharray: 7 4; }
+.crv-app .crv-edge--forward .crv-edge-label { fill: color-mix(in srgb, var(--crv-fam-bridge) 70%, #000000); font-weight: 600; }
+.crv-app .crv-edge--forward.is-loop path { stroke: var(--crv-loop); }
+.crv-app .crv-arrow--forward path { fill: var(--crv-fam-bridge); }
+
+/* Legend (bottom-left of the map): what each colour means. */
+.crv-app .crv-legend { position: absolute; left: 12px; bottom: 12px; z-index: 4; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.crv-app .crv-legend__toggle { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--crv-border); background: var(--crv-surface); color: var(--crv-muted);
+	border-radius: 999px; padding: 3px 10px 3px 6px; font: 12px/1.3 var(--crv-font); box-shadow: 0 1px 3px rgba(1, 17, 50, .12); cursor: pointer; }
+.crv-app .crv-legend__toggle:hover { color: var(--crv-accent); }
+.crv-app .crv-legend__dots { display: inline-flex; gap: 2px; }
+.crv-app .crv-legend__dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--crv-fam); }
+.crv-app .crv-legend__list { margin: 0; padding: 8px 12px; list-style: none; background: var(--crv-surface); border: 1px solid var(--crv-border); border-radius: 6px;
+	box-shadow: 0 4px 14px rgba(1, 17, 50, .14); font-size: 12px; color: var(--crv-text); }
+.crv-app .crv-legend__list[hidden] { display: none; }
+.crv-app .crv-legend__list li { display: flex; align-items: center; gap: 8px; padding: 2px 0; white-space: nowrap; }
+.crv-app .crv-legend__list b { font-weight: 600; color: var(--crv-heading); min-width: 74px; }
+.crv-app .crv-legend__swatch { flex: none; width: 18px; height: 12px; border-radius: 3px; background: var(--crv-node-bg); box-shadow: inset 5px 0 0 var(--crv-fam); }
+.crv-app .crv-legend__swatch--logic { background: var(--crv-surface); border: 1.5px dashed color-mix(in srgb, var(--crv-node-bg) 55%, transparent); box-shadow: none; border-radius: 999px; }
+.crv-app .crv-legend__swatch--fwd { height: 0; border-top: 2px dashed var(--crv-fam-bridge); background: none; box-shadow: none; border-radius: 0; }
+
 /* Menus: a phone keypad. Configured keys are live; the rest are disabled. */
 .crv-app .crv-keypad { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; align-items: center; }
 .crv-app .crv-keypad__row { display: flex; gap: 6px; }
@@ -337,3 +392,70 @@
 .crv-print { display: block; height: auto; background: #fff; font: 12px/1.4 var(--fontOverride, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif); }
 .crv-print .crv-edge-label-bg { fill: #fff; }
 .crv-print .crv-node.is-dim, .crv-print .crv-edge.is-dim { opacity: .45; }
+
+/* ---- Skipped steps (skip_module), pivot test replies ---- */
+.crv-app .crv-node.is-skipped { opacity: .6; border-style: dashed; filter: grayscale(.6); }
+.crv-app .crv-node.is-skipped .crv-node__label { text-decoration: line-through 2px; text-decoration-color: currentColor; }
+.crv-app .crv-node.is-skipped.is-lit { opacity: .9; }
+.crv-app .crv-edge.is-inactive path { stroke-opacity: .25; stroke-dasharray: 2 4; }
+.crv-app .crv-edge.is-inactive .crv-edge-label { fill: var(--crv-muted); }
+.crv-app .crv-edge--pivot path { stroke: var(--crv-fam-outside); stroke-opacity: .95; stroke-width: 2; stroke-dasharray: 7 4; }
+.crv-app .crv-edge--pivot .crv-edge-label { fill: color-mix(in srgb, var(--crv-fam-outside) 70%, #000000); font-weight: 600; }
+.crv-app .crv-node.is-pivot-reply { outline: 2px dashed var(--crv-fam-outside); outline-offset: 3px; }
+
+/* ---- Simulator switches ---- */
+.crv-app .crv-switches { margin: 10px 0 4px; }
+.crv-app .crv-switches .crv-muted { margin: 2px 0 6px; font-size: 12px; }
+.crv-app .crv-switch { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px solid var(--crv-border); }
+.crv-app .crv-switch__name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 5px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+.crv-app .crv-switch__name small { color: var(--crv-muted); font-size: 11px; margin-left: 2px; }
+.crv-app .crv-switch.is-changed .crv-switch__name { font-weight: 600; }
+.crv-app .crv-seg--sm { flex: 0 0 auto; }
+.crv-app .crv-seg--sm button { flex: 0 0 auto; padding: 3px 8px; font-size: 11px; }
+.crv-app .crv-seg--sm button.is-saved:not(.is-active) { box-shadow: inset 0 -2px 0 var(--crv-border); }
+
+/* ---- Details actions, pivot test dialog ---- */
+.crv-app .crv-dactions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
+.crv-app .crv-modal { position: absolute; inset: 0; z-index: 60; display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px;
+	background: rgba(1, 17, 50, .35); overflow: auto; }
+.crv-app .crv-modal__box { width: min(620px, 100%); background: var(--crv-surface); color: var(--crv-text); border-radius: 6px; box-shadow: 0 12px 40px rgba(1, 17, 50, .3); }
+.crv-app .crv-modal__head { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--crv-border); }
+.crv-app .crv-modal__head h3 { margin: 0; font-size: 16px; }
+.crv-app .crv-modal__body { padding: 12px 16px 16px; }
+.crv-app .crv-pivot__url code { word-break: break-all; font-size: 12px; }
+.crv-app .crv-warnbox { border: 1px solid color-mix(in srgb, var(--crv-warn) 70%, #000000 0%); background: color-mix(in srgb, var(--crv-warn) 14%, #ffffff); border-radius: 4px; padding: 10px 12px; margin: 10px 0; font-size: 13px; }
+.crv-app .crv-warnbox ul { margin: 6px 0 0 18px; padding: 0; }
+.crv-app .crv-warnbox li { margin: 4px 0; }
+.crv-app .crv-warnbox li.is-strong { font-weight: 600; color: var(--crv-fail); }
+.crv-app .crv-pivot__fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0 10px; }
+.crv-app .crv-pivot__fields input { width: 100%; box-sizing: border-box; }
+.crv-app .crv-pivot__agree { font-weight: 600; }
+.crv-app .crv-pivot__pastebox { margin: 8px 0; }
+.crv-app .crv-pivot__pastebox summary, .crv-app .crv-pivot__raw summary { cursor: pointer; color: var(--crv-accent); }
+.crv-app .crv-pivot__paste { width: 100%; box-sizing: border-box; font-family: monospace; font-size: 12px; margin-top: 6px; }
+.crv-app .crv-pivot__raw pre { max-height: 220px; overflow: auto; font-size: 11px; background: color-mix(in srgb, var(--crv-border) 45%, #ffffff); color: var(--crv-text); padding: 8px; white-space: pre-wrap; word-break: break-all; }
+.crv-app .crv-pivot__verbs { margin: 4px 0 8px 20px; padding: 0; font-size: 13px; }
+.crv-app .crv-pivot__fields[hidden] { display: none; }
+.crv-app .crv-btn:disabled, .crv-app .crv-btn[disabled] { opacity: .45; cursor: not-allowed; }
+
+/* ---- "Ends the call" family, choices, caller number ---- */
+.crv-app { --crv-fam-end: #e5484d; }
+.crv-app .crv-fam--end { --crv-fam: var(--crv-fam-end); }
+.crv-app .crv-choices { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+.crv-app .crv-choices small { width: 100%; color: var(--crv-muted); }
+.crv-app .crv-choices .crv-btn { padding: 4px 10px; font-size: 12px; }
+.crv-app .crv-sim__cidfield input { width: 100%; }
+.crv-app .crv-end--awaiting-choice { background: color-mix(in srgb, var(--crv-accent) 10%, #ffffff); }
+
+/* ---- Pivot tester: route data, reply listing ---- */
+.crv-app .crv-pivot__params h4 { margin: 12px 0 2px; }
+.crv-app .crv-pivot__params[hidden] { display: none; }
+.crv-app .crv-pivot__fields small { font-size: 11px; }
+.crv-app .crv-pivot__notes { margin: 6px 0 0 18px; padding: 0; font-size: 12px; color: var(--crv-muted); }
+.crv-app .crv-pivot__listing { max-height: 320px; overflow: auto; margin: 4px 0 0; padding: 6px 0; font-size: 11px; line-height: 1.45;
+	background: color-mix(in srgb, var(--crv-border) 45%, #ffffff); color: var(--crv-text); border-radius: 4px; }
+.crv-app .crv-pivot__line { display: block; white-space: pre; padding-right: 8px; }
+.crv-app .crv-pivot__line i { display: inline-block; width: 3.2em; padding-right: .8em; text-align: right; font-style: normal; color: var(--crv-muted); user-select: none; }
+.crv-app .crv-pivot__line.is-error { background: color-mix(in srgb, var(--crv-fail) 18%, transparent); }
+.crv-app .crv-pivot__line.is-caret { color: var(--crv-fail); font-weight: 700; }
+.crv-app .crv-pivot__fields .crv-field > span { text-transform: none; letter-spacing: 0; font-family: monospace; font-size: 11px; }
